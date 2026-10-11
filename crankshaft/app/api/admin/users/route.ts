@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     // Ghost users are strictly hidden and not shown on the user tab
     const users = await User.find({
       role: { $ne: "ghost" },
-      username: { $ne: "ayaan_admin" },
+      username: { $nin: ["ayaan_admin", "Ayaan_Admin"] },
     })
       .select("-password")
       .sort({ createdAt: -1 })

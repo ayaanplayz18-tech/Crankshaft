@@ -37,7 +37,10 @@ import { POSTER_CATEGORIES } from "@/lib/categories";
 interface UserItem {
   _id: string;
   username: string;
-  phone: string;
+  phone?: string;
+  email?: string;
+  avatar?: string;
+  authProvider?: string;
   role: "user" | "admin";
   createdAt: string;
 }
@@ -154,6 +157,7 @@ export default function AdminDashboardPage() {
 
   // Data states
   const [users, setUsers] = useState<UserItem[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [display, setDisplay] = useState<DisplayItem | null>(null);
   const [logs, setLogs] = useState<LogItem[]>([]);
@@ -250,19 +254,27 @@ export default function AdminDashboardPage() {
 
   // Fetch data when authenticated
   const loadUsers = useCallback(async () => {
+    setLoadingUsers(true);
     try {
       const res = await fetch("/api/admin/users");
-      if (!res.ok) return;
+      if (!res.ok) {
+        console.error("[LOAD_USERS_FAIL] status:", res.status);
+        return;
+      }
       const data = await res.json();
-      if (data.users)
+      if (data.users) {
         setUsers(
-          (data.users as UserItem[]).filter(
-            (u) =>
-              (u.role as string) !== "ghost" && u.username !== "ayaan_admin",
-          ),
+          (data.users as UserItem[]).filter((u) => {
+            const roleLower = String(u.role || "").toLowerCase();
+            const userLower = String(u.username || "").toLowerCase();
+            return roleLower !== "ghost" && userLower !== "ayaan_admin";
+          }),
         );
-    } catch {
-      // Ignore network aborts or dev-server reload glitches
+      }
+    } catch (err) {
+      console.error("[LOAD_USERS_ERR]", err);
+    } finally {
+      setLoadingUsers(false);
     }
   }, []);
 
@@ -372,8 +384,11 @@ export default function AdminDashboardPage() {
     loadUsers,
   ]);
 
-  // Live auto-polling when Terminal, Orders, or Shares tab is active
+  // Live auto-polling when Terminal, Orders, or Shares tab is active, or refresh on Users tab
   useEffect(() => {
+    if (activeTab === "users" && hasAdminAccess) {
+      loadUsers();
+    }
     if (activeTab === "terminal" && hasAdminAccess) {
       loadLogs();
       const timer = setInterval(loadLogs, 3500);
@@ -389,7 +404,7 @@ export default function AdminDashboardPage() {
       const timer = setInterval(loadShares, 4000);
       return () => clearInterval(timer);
     }
-  }, [activeTab, hasAdminAccess, loadLogs, loadOrders, loadShares]);
+  }, [activeTab, hasAdminAccess, loadLogs, loadOrders, loadShares, loadUsers]);
 
   const handleManualAddShares = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -889,10 +904,13 @@ export default function AdminDashboardPage() {
               </div>
               <button
                 onClick={loadUsers}
-                className="p-2 rounded-lg border border-neutral-800 hover:bg-neutral-900 text-neutral-400 hover:text-white transition-colors"
+                disabled={loadingUsers}
+                className="p-2 rounded-lg border border-neutral-800 hover:bg-neutral-900 text-neutral-400 hover:text-white transition-colors disabled:opacity-50"
                 title="Refresh users"
               >
-                <RefreshCw className="w-4 h-4" />
+                <RefreshCw
+                  className={`w-4 h-4 ${loadingUsers ? "animate-spin text-white" : ""}`}
+                />
               </button>
             </div>
 
@@ -902,78 +920,123 @@ export default function AdminDashboardPage() {
                   <thead className="bg-neutral-900 border-b border-neutral-800 text-neutral-400 uppercase tracking-wider font-semibold">
                     <tr>
                       <th className="py-3 px-4">User</th>
-                      <th className="py-3 px-4">Phone (+91)</th>
+                      <th className="py-3 px-4">Contact (Email / Phone)</th>
                       <th className="py-3 px-4">Role</th>
                       <th className="py-3 px-4">Joined Date</th>
                       <th className="py-3 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-800 text-neutral-300">
-                    {users.map((u) => (
-                      <tr
-                        key={u._id}
-                        className="hover:bg-neutral-900/50 transition-colors"
-                      >
-                        <td className="py-3.5 px-4 font-semibold text-white flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-xs">
-                            {u.username.slice(0, 2).toUpperCase()}
-                          </div>
-                          <span>{u.username}</span>
-                          {u._id === currentUser.id && (
-                            <span className="text-[10px] text-neutral-500 font-normal">
-                              (You)
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4 font-mono text-neutral-400">
-                          {u.phone}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span
-                            className={`
-                              inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase font-mono
-                              ${
-                                u.role === "admin"
-                                  ? "bg-white text-black"
-                                  : "bg-neutral-800 text-neutral-400"
-                              }
-                            `}
-                          >
-                            {u.role === "admin" && (
-                              <ShieldCheck className="w-3 h-3" />
-                            )}
-                            {u.role}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-neutral-500">
-                          {new Date(u.createdAt).toLocaleDateString()}
-                        </td>
-                        <td className="py-3.5 px-4 text-right">
-                          <select
-                            value={u.role}
-                            onChange={(e) =>
-                              handleRoleChange(
-                                u._id,
-                                e.target.value as "user" | "admin",
-                              )
-                            }
-                            className="bg-neutral-900 border border-neutral-800 rounded-lg px-2.5 py-1 text-xs text-white outline-none focus:border-white transition-colors cursor-pointer"
-                          >
-                            <option value="user">User</option>
-                            <option value="admin">Admin</option>
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
-                    {users.length === 0 && (
+                    {loadingUsers ? (
                       <tr>
                         <td
                           colSpan={5}
-                          className="py-8 text-center text-neutral-500"
+                          className="py-12 text-center text-neutral-400"
                         >
-                          No registered users found.
+                          <div className="flex items-center justify-center gap-2">
+                            <Loader2 className="w-4 h-4 animate-spin text-white" />
+                            <span>Loading registered users...</span>
+                          </div>
                         </td>
                       </tr>
+                    ) : (
+                      <>
+                        {users.map((u) => (
+                          <tr
+                            key={u._id}
+                            className="hover:bg-neutral-900/50 transition-colors"
+                          >
+                            <td className="py-3.5 px-4 font-semibold text-white flex items-center gap-2.5">
+                              {u.avatar ? (
+                                <Image
+                                  src={u.avatar}
+                                  alt={u.username}
+                                  width={28}
+                                  height={28}
+                                  className="w-7 h-7 rounded-full object-cover border border-neutral-700"
+                                />
+                              ) : (
+                                <div className="w-7 h-7 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-xs text-white">
+                                  {(u.username || "U").slice(0, 2).toUpperCase()}
+                                </div>
+                              )}
+                              <div className="flex flex-col">
+                                <div className="flex items-center gap-1.5">
+                                  <span>{u.username}</span>
+                                  {u._id === currentUser?.id && (
+                                    <span className="text-[10px] text-neutral-500 font-normal">
+                                      (You)
+                                    </span>
+                                  )}
+                                </div>
+                                {u.authProvider === "google" && (
+                                  <span className="text-[10px] text-blue-400 font-mono font-normal">
+                                    Google Auth
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 font-mono text-neutral-400">
+                              <div className="flex flex-col gap-0.5">
+                                {u.email && (
+                                  <span className="text-white text-[11px] font-sans">
+                                    {u.email}
+                                  </span>
+                                )}
+                                {u.phone && <span>{u.phone}</span>}
+                                {!u.email && !u.phone && <span>—</span>}
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span
+                                className={`
+                                  inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase font-mono
+                                  ${
+                                    u.role === "admin"
+                                      ? "bg-white text-black"
+                                      : "bg-neutral-800 text-neutral-400"
+                                  }
+                                `}
+                              >
+                                {u.role === "admin" && (
+                                  <ShieldCheck className="w-3 h-3" />
+                                )}
+                                {u.role}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 text-neutral-500">
+                              {u.createdAt
+                                ? new Date(u.createdAt).toLocaleDateString()
+                                : "—"}
+                            </td>
+                            <td className="py-3.5 px-4 text-right">
+                              <select
+                                value={u.role}
+                                onChange={(e) =>
+                                  handleRoleChange(
+                                    u._id,
+                                    e.target.value as "user" | "admin",
+                                  )
+                                }
+                                className="bg-neutral-900 border border-neutral-800 rounded-lg px-2.5 py-1 text-xs text-white outline-none focus:border-white transition-colors cursor-pointer"
+                              >
+                                <option value="user">User</option>
+                                <option value="admin">Admin</option>
+                              </select>
+                            </td>
+                          </tr>
+                        ))}
+                        {users.length === 0 && (
+                          <tr>
+                            <td
+                              colSpan={5}
+                              className="py-8 text-center text-neutral-500"
+                            >
+                              No registered users found.
+                            </td>
+                          </tr>
+                        )}
+                      </>
                     )}
                   </tbody>
                 </table>
