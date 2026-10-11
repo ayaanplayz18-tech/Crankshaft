@@ -31,7 +31,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { POSTER_CATEGORIES } from "@/lib/categories";
 
 interface UserItem {
@@ -249,9 +249,10 @@ export default function AdminDashboardPage() {
   }, []);
 
   // Fetch data when authenticated
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/users");
+      if (!res.ok) return;
       const data = await res.json();
       if (data.users)
         setUsers(
@@ -260,37 +261,40 @@ export default function AdminDashboardPage() {
               (u.role as string) !== "ghost" && u.username !== "ayaan_admin",
           ),
         );
-    } catch (err) {
-      console.error(err);
+    } catch {
+      // Ignore network aborts or dev-server reload glitches
     }
-  };
+  }, []);
 
-  const loadDisplay = async () => {
+  const loadDisplay = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/display");
+      if (!res.ok) return;
       const data = await res.json();
       if (data.display) {
         setDisplay(data.display);
         setNewPosterName(data.display.posterName || "");
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      // Ignore network aborts or dev-server reload glitches
     }
-  };
+  }, []);
 
-  const loadProducts = async () => {
+  const loadProducts = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/products");
+      if (!res.ok) return;
       const data = await res.json();
       if (data.products) setProducts(data.products);
-    } catch (err) {
-      console.error(err);
+    } catch {
+      // Ignore network aborts or dev-server reload glitches
     }
-  };
+  }, []);
 
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/terminal");
+      if (!res.ok) return;
       const data = await res.json();
       if (data.logs) {
         const ghostHandle =
@@ -315,37 +319,39 @@ export default function AdminDashboardPage() {
           }),
         );
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      // Ignore network aborts or dev-server reload glitches
     }
-  };
+  }, [currentUser]);
 
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/orders");
+      if (!res.ok) return;
       const data = await res.json();
       if (data.orders) {
         setOrders(data.orders);
         if (data.stats) setOrderStats(data.stats);
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      // Ignore network aborts or dev-server reload glitches
     }
-  };
+  }, []);
 
-  const loadShares = async () => {
+  const loadShares = useCallback(async () => {
     setSharesLoading(true);
     try {
       const res = await fetch("/api/admin/shares");
+      if (!res.ok) return;
       const data = await res.json();
       if (data.stakeholders) setStakeholders(data.stakeholders);
       if (data.stats) setShareStats(data.stats);
-    } catch (err) {
-      console.error("[LOAD_SHARES_ERR]", err);
+    } catch {
+      // Ignore network aborts or dev-server reload glitches
     } finally {
       setSharesLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (hasAdminAccess) {
