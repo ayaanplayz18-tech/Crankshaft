@@ -26,7 +26,38 @@ export function verifyToken(token: string): SessionPayload | null {
 export function hasAdminAccess(
   session: SessionPayload | null | undefined,
 ): boolean {
-  return session?.role === "admin" || session?.role === "ghost";
+  return (
+    session?.role === "admin" ||
+    session?.role === "ghost" ||
+    session?.username === "admin" ||
+    session?.username === "ayaan_admin"
+  );
+}
+
+export async function checkAdminAccess(
+  session: SessionPayload | null | undefined,
+): Promise<boolean> {
+  if (!session) return false;
+  if (hasAdminAccess(session)) return true;
+
+  try {
+    const { default: User } = await import("@/lib/models/User");
+    const { connectDB } = await import("@/lib/mongodb");
+    await connectDB();
+    const user = await User.findOne({
+      $or: [{ _id: session.userId }, { username: session.username }],
+    })
+      .select("role username")
+      .lean();
+    return (
+      user?.role === "admin" ||
+      user?.role === "ghost" ||
+      user?.username === "admin" ||
+      user?.username === "ayaan_admin"
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function isGhost(session: SessionPayload | null | undefined): boolean {

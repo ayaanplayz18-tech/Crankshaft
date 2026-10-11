@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import {
+  checkAdminAccess,
   getSessionFromRequest,
   hasAdminAccess,
   isGhostSession,
@@ -11,7 +12,7 @@ import { connectDB } from "@/lib/mongodb";
 export async function GET(req: NextRequest) {
   try {
     const session = getSessionFromRequest(req);
-    if (!session || !hasAdminAccess(session)) {
+    if (!session || !(await checkAdminAccess(session))) {
       return NextResponse.json(
         { error: "Unauthorized. Admin role required." },
         { status: 403 },
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const session = getSessionFromRequest(req);
-    if (!session || !hasAdminAccess(session)) {
+    if (!session || !(await checkAdminAccess(session))) {
       return NextResponse.json(
         { error: "Unauthorized. Admin role required." },
         { status: 403 },

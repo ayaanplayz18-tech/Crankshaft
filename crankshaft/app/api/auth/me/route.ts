@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSessionFromRequest, signToken } from "@/lib/auth";
 import User from "@/lib/models/User";
 import { connectDB } from "@/lib/mongodb";
 
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ user: null });
     }
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       user: {
         id: user._id,
         username: user.username,
@@ -28,6 +28,24 @@ export async function GET(req: NextRequest) {
         authProvider: user.authProvider || "credentials",
       },
     });
+
+    // If role in DB changed (e.g. via MongoDB Compass), auto-refresh the JWT cookie
+    if (user.role !== session.role || user.username !== session.username) {
+      const refreshedToken = signToken({
+        userId: user._id.toString(),
+        username: user.username,
+        role: user.role,
+      });
+      res.cookies.set("crankshaft_token", refreshedToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7,
+      });
+    }
+
+    return res;
   } catch (err: unknown) {
     console.error("[AUTH_ME]", err);
     return NextResponse.json({ user: null });
