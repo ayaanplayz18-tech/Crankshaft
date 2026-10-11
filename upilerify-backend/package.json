@@ -1,0 +1,22 @@
+{
+  "name": "upilerify-backend",
+  "version": "1.0.0",
+  "description": "Production-ready self-hosted UPIlerify payment verification service with delayed-cron Gmail IMAP polling",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["upi", "upilerify", "payments", "render", "imap", "utr"],
+  "author": "CrankShaft Team",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "imapflow": "^1.0.171",
+    "mailparser": "^3.7.2",
+    "mongoose": "^8.9.5",
+    "qrcode": "^1.5.4"
+  }
+}
