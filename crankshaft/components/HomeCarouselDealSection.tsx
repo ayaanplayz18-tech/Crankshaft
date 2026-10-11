@@ -52,7 +52,7 @@ const AVAILABLE_POSTERS: CatalogPoster[] = [
     name: "MusicFest",
     category: "Music Festivals",
     price: 200,
-    imageUrl: "posters-ex.png",
+    imageUrl: "/images/poster-ex.png",
     tagline: "A celebration of sound",
   },
   {
@@ -487,7 +487,7 @@ export default function HomeCarouselDealSection() {
                 </p>
                 <div className="flex items-center gap-2 mt-4">
                   <div className="relative w-16 h-20 rounded-lg overflow-hidden border border-neutral-800">
-                    <Image src="/poster-ex.png" alt="GTR" fill className="object-cover" unoptimized />
+                    <Image src="/images/poster-ex.png" alt="MusicFest" fill className="object-cover" unoptimized />
                   </div>
                   <span className="text-neutral-500 font-bold">+</span>
                   <div className="relative w-16 h-20 rounded-lg overflow-hidden border border-neutral-800">
@@ -553,7 +553,7 @@ export default function HomeCarouselDealSection() {
                 </p>
                 <div className="flex items-center gap-2 mt-4">
                   <div className="relative w-16 h-20 rounded-lg overflow-hidden border border-neutral-800">
-                    <Image src="/poster-ex.png" alt="GTR" fill className="object-cover" unoptimized />
+                    <Image src="/images/poster-ex.png" alt="MusicFest" fill className="object-cover" unoptimized />
                   </div>
                   <span className="text-neutral-500 font-bold">+</span>
                   <div className="relative w-16 h-20 rounded-lg overflow-hidden border border-neutral-800">
