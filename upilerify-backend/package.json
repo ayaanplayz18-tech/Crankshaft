@@ -18,5 +18,8 @@
     "mailparser": "^3.7.2",
     "mongoose": "^8.9.5",
     "qrcode": "^1.5.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

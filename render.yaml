@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: upilerify-backend
+    runtime: node
+    plan: free
+    rootDir: upilerify-backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DEFAULT_UPI_ID
+        value: 8123738080@fam
+      - key: DEFAULT_UPI_NAME
+        value: CrankShaft
+      - key: WEBHOOK_URL
+        value: https://crankshaft-snowy.vercel.app/api/webhooks/upilerify
+      - key: WEBHOOK_SECRET
+        value: whsec_crankshaft_upilerify_secret_key_2026
+      - key: CRON_SECRET
+        value: cron_secret_crankshaft_upilerify_2026
+      - key: GMAIL_ADDRESS
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: SERVICE_URL
+        sync: false
