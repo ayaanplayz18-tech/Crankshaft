@@ -33,6 +33,11 @@ export default function CartDrawer() {
     clearCart,
     totalCount,
     subtotal,
+    comboDiscount,
+    finalTotal,
+    hasDealApplied,
+    dealPair,
+    qualifyingCategories,
   } = useCart();
 
   // UPIlerify payment state
@@ -106,9 +111,9 @@ export default function CartDrawer() {
     return () => clearInterval(timer);
   }, [paymentModalOpen, orderData?.orderId, paymentStatus, clearCart]);
 
-  // Order payload passed to api.pay(order)
+  // Order payload passed to api.pay(order) - uses final discounted total
   const order = {
-    amount: subtotal,
+    amount: finalTotal,
     items,
     userId: "cart_customer",
   };
@@ -116,7 +121,7 @@ export default function CartDrawer() {
   // API helper for SlideCommit onConfirm
   const api = {
     pay: async (orderPayload: typeof order) => {
-      if (items.length === 0 || subtotal <= 0) {
+      if (items.length === 0 || finalTotal <= 0) {
         throw new Error("Cart is empty");
       }
 
@@ -274,78 +279,97 @@ export default function CartDrawer() {
 
         {/* Cart Item List */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4 divide-y divide-neutral-100">
-          {items.map((item) => (
-            <div
-              key={item.id}
-              className="pt-4 first:pt-0 flex items-center gap-4"
-            >
-              {/* Thumbnail */}
-              <div className="relative w-16 h-20 rounded-lg overflow-hidden bg-neutral-100 border border-neutral-200 shrink-0">
-                {item.imageUrl ? (
-                  <Image
-                    src={item.imageUrl}
-                    alt={item.name}
-                    fill
-                    className="object-cover"
-                    unoptimized
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-neutral-100 text-neutral-400 text-xs">
-                    No image
-                  </div>
-                )}
-              </div>
+          {items.map((item) => {
+            const isDealItem =
+              hasDealApplied &&
+              dealPair?.some((dp) => dp.id === item.id);
 
-              {/* Details */}
-              <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-bold text-neutral-900 truncate">
-                  {item.name}
-                </h3>
-                <p className="text-xs font-mono font-semibold text-neutral-600 mt-0.5">
-                  ₹{Number(item.price).toFixed(2)} each
-                </p>
-
-                {/* Quantity Controls */}
-                <div className="flex items-center gap-3 mt-3">
-                  <div className="flex items-center border border-neutral-200 rounded-lg bg-neutral-50">
-                    <button
-                      type="button"
-                      aria-label="Decrease quantity"
-                      onClick={() => updateQuantity(item.id, -1)}
-                      className="p-1 hover:bg-neutral-200 rounded-l-lg transition-colors text-neutral-700"
-                    >
-                      <Minus className="w-3.5 h-3.5" />
-                    </button>
-                    <span className="px-3 text-xs font-mono font-bold text-neutral-900">
-                      {item.quantity}
-                    </span>
-                    <button
-                      type="button"
-                      aria-label="Increase quantity"
-                      onClick={() => updateQuantity(item.id, 1)}
-                      className="p-1 hover:bg-neutral-200 rounded-r-lg transition-colors text-neutral-700"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <span className="text-xs font-mono font-bold text-neutral-900">
-                    ₹{(item.price * item.quantity).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-
-              {/* Remove */}
-              <button
-                type="button"
-                aria-label={`Remove ${item.name} from cart`}
-                onClick={() => removeFromCart(item.id)}
-                className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+            return (
+              <div
+                key={item.id}
+                className="pt-4 first:pt-0 flex items-center gap-4"
               >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
+                {/* Thumbnail */}
+                <div className="relative w-16 h-20 rounded-lg overflow-hidden bg-neutral-100 border border-neutral-200 shrink-0">
+                  {item.imageUrl ? (
+                    <Image
+                      src={item.imageUrl}
+                      alt={item.name}
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-neutral-100 text-neutral-400 text-xs">
+                      No image
+                    </div>
+                  )}
+                </div>
+
+                {/* Details */}
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-bold text-neutral-900 truncate">
+                    {item.name}
+                  </h3>
+
+                  {/* Category Pill and Deal Tag */}
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 border border-neutral-200">
+                      {item.category || "General"}
+                    </span>
+                    {isDealItem && (
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        2 for ₹300 Pair
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-xs font-mono font-semibold text-neutral-600 mt-1">
+                    ₹{Number(item.price).toFixed(2)} each
+                  </p>
+
+                  {/* Quantity Controls */}
+                  <div className="flex items-center gap-3 mt-2.5">
+                    <div className="flex items-center border border-neutral-200 rounded-lg bg-neutral-50">
+                      <button
+                        type="button"
+                        aria-label="Decrease quantity"
+                        onClick={() => updateQuantity(item.id, -1)}
+                        className="p-1 hover:bg-neutral-200 rounded-l-lg transition-colors text-neutral-700"
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="px-3 text-xs font-mono font-bold text-neutral-900">
+                        {item.quantity}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label="Increase quantity"
+                        onClick={() => updateQuantity(item.id, 1)}
+                        className="p-1 hover:bg-neutral-200 rounded-r-lg transition-colors text-neutral-700"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <span className="text-xs font-mono font-bold text-neutral-900">
+                      ₹{(item.price * item.quantity).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Remove */}
+                <button
+                  type="button"
+                  aria-label={`Remove ${item.name} from cart`}
+                  onClick={() => removeFromCart(item.id)}
+                  className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            );
+          })}
 
           {/* Empty State */}
           {items.length === 0 && (
@@ -371,12 +395,77 @@ export default function CartDrawer() {
           )}
         </div>
 
-        {/* Footer with Totals and SlideCommit Button */}
+        {/* Footer with Totals, Deal Promotion, and SlideCommit Button */}
         {items.length > 0 && (
           <div className="p-6 border-t border-neutral-200 bg-neutral-50/70 space-y-4">
-            <div className="flex items-center justify-between text-base font-bold text-neutral-900">
-              <span>Subtotal</span>
-              <span className="font-mono text-lg">₹{subtotal.toFixed(2)}</span>
+            {/* Promo banner: Two for 300 deal status */}
+            {hasDealApplied ? (
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 space-y-1">
+                <div className="flex items-center justify-between font-bold">
+                  <span className="flex items-center gap-1.5">
+                    <span>🎉</span>
+                    <span>Two for ₹300 Deal Applied!</span>
+                  </span>
+                  <span className="font-mono text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-300">
+                    -₹{comboDiscount.toFixed(2)}
+                  </span>
+                </div>
+                <p className="text-[11px] text-emerald-700">
+                  Different categories bundle: {qualifyingCategories?.[0]} +{" "}
+                  {qualifyingCategories?.[1]} (1 pair offer)
+                </p>
+              </div>
+            ) : (
+              <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-950 flex items-center justify-between gap-2">
+                <div>
+                  <p className="font-bold flex items-center gap-1 text-blue-900">
+                    <span>💡</span>
+                    <span>Two for ₹300 Deal</span>
+                  </p>
+                  <p className="text-[11px] text-blue-700">
+                    {items.length === 1
+                      ? "Add 1 poster from a different category to unlock 2 for ₹300!"
+                      : "Select posters from 2 different categories to get ₹300 pricing!"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeCart}
+                  className="shrink-0 text-[11px] font-bold text-blue-700 hover:text-blue-900 underline cursor-pointer"
+                >
+                  Browse
+                </button>
+              </div>
+            )}
+
+            {/* Price breakdown */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between text-xs font-medium text-neutral-600">
+                <span>Original Subtotal</span>
+                <span
+                  className={`font-mono ${
+                    hasDealApplied
+                      ? "line-through text-neutral-400"
+                      : "text-neutral-900 font-bold"
+                  }`}
+                >
+                  ₹{subtotal.toFixed(2)}
+                </span>
+              </div>
+
+              {hasDealApplied && (
+                <div className="flex items-center justify-between text-xs font-bold text-emerald-600">
+                  <span>Category Pair Discount</span>
+                  <span className="font-mono">-₹{comboDiscount.toFixed(2)}</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between text-base font-bold text-neutral-900 pt-1.5 border-t border-neutral-200">
+                <span>Total to Pay</span>
+                <span className="font-mono text-xl text-neutral-950">
+                  ₹{finalTotal.toFixed(2)}
+                </span>
+              </div>
             </div>
 
             {/* SlideCommit Component */}

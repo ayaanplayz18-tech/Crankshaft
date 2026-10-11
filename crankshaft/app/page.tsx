@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import { Press_Start_2P } from "next/font/google";
 import Image from "next/image";
 import Link from "next/link";
+import { ChevronDown } from "lucide-react";
 import DisplaySetting from "@/lib/models/DisplaySetting";
 import { connectDB } from "@/lib/mongodb";
+import HomeCarouselDealSection from "@/components/HomeCarouselDealSection";
 import Navbar from "./components/Navbar";
 
 const pixelFont = Press_Start_2P({
@@ -44,7 +46,7 @@ export default async function HomePage() {
   const poster = await getActivePoster();
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#030714] text-white">
+    <main className="relative min-h-screen overflow-x-hidden bg-[#030714] text-white">
       {/* Ambient glow blobs */}
       <div
         aria-hidden
@@ -162,7 +164,21 @@ export default async function HomePage() {
             />
           </div>
         </div>
+
+        {/* ── Scroll cue down to Carousel & Deals ── */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1.5 opacity-80 hover:opacity-100 transition-opacity">
+          <a
+            href="#carousel-deals"
+            className="flex flex-col items-center gap-1 text-[11px] font-mono tracking-widest uppercase text-neutral-400 hover:text-white"
+          >
+            <span>Scroll For 3D Carousel & Deals</span>
+            <ChevronDown className="w-4 h-4 animate-bounce text-[#00d2ff]" />
+          </a>
+        </div>
       </section>
+
+      {/* ── 3D Circular Carousel & Two for 300 Deal Section ── */}
+      <HomeCarouselDealSection />
     </main>
   );
 }

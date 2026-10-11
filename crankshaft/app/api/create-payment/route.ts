@@ -47,19 +47,48 @@ export async function POST(req: Request) {
       const dbProd = dbProductMap.get(String(pid));
       const unitPrice = dbProd ? Number(dbProd.price) : Number(it.price) || 0;
       const qty = Math.max(1, Number(it.quantity) || 1);
+      const category = (dbProd ? dbProd.category : it.category) || "General";
       verifiedAmount += unitPrice * qty;
       verifiedItems.push({
         productId: pid,
         name: dbProd ? dbProd.name : it.name || "Poster Artwork",
         price: unitPrice,
         quantity: qty,
+        category,
         imageUrl: dbProd ? dbProd.imageUrl : it.imageUrl || "",
       });
     }
 
+    // Apply "Two for 300 deal" discount (if two posters have different categories, strictly one pair)
+    const units: { price: number; category: string }[] = [];
+    for (const it of verifiedItems) {
+      const cat = (it.category || "General").trim();
+      for (let i = 0; i < it.quantity; i++) {
+        units.push({ price: it.price, category: cat });
+      }
+    }
+
+    let dealDiscount = 0;
+    if (units.length >= 2) {
+      for (let i = 0; i < units.length; i++) {
+        for (let j = i + 1; j < units.length; j++) {
+          if (units[i].category.toLowerCase() !== units[j].category.toLowerCase()) {
+            const pairTotal = units[i].price + units[j].price;
+            dealDiscount = Math.max(0, pairTotal - 300);
+            break;
+          }
+        }
+        if (dealDiscount > 0) break;
+      }
+    }
+
+    const discountedVerified = Math.max(0, verifiedAmount - dealDiscount);
+
     // Use verified server amount if products were verified, otherwise fallback to parsedAmount
     const finalAmount =
-      verifiedAmount > 0 ? parseFloat(verifiedAmount.toFixed(2)) : parsedAmount;
+      discountedVerified > 0
+        ? parseFloat(discountedVerified.toFixed(2))
+        : parsedAmount;
 
     // Generate unique internal Order ID
     const internalOrderId = `ord_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;

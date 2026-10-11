@@ -15,6 +15,56 @@ export interface CartItem {
   price: number;
   imageUrl: string;
   quantity: number;
+  category?: string;
+}
+
+export function calculateTwoFor300Deal(items: CartItem[]): {
+  discount: number;
+  hasDeal: boolean;
+  qualifyingPair: [CartItem, CartItem] | null;
+  qualifyingCategories: [string, string] | null;
+} {
+  // Expand individual units to check poster by poster
+  const units: { item: CartItem; category: string; price: number }[] = [];
+  for (const item of items) {
+    const cat = (item.category || "General").trim();
+    for (let i = 0; i < item.quantity; i++) {
+      units.push({ item, category: cat, price: Number(item.price) || 0 });
+    }
+  }
+
+  if (units.length < 2) {
+    return {
+      discount: 0,
+      hasDeal: false,
+      qualifyingPair: null,
+      qualifyingCategories: null,
+    };
+  }
+
+  // Find the first pair that has DIFFERENT categories
+  for (let i = 0; i < units.length; i++) {
+    for (let j = i + 1; j < units.length; j++) {
+      if (units[i].category.toLowerCase() !== units[j].category.toLowerCase()) {
+        const originalPairTotal = units[i].price + units[j].price;
+        // Two posters for 300 deal: pair becomes ₹300 total!
+        const discount = Math.max(0, originalPairTotal - 300);
+        return {
+          discount,
+          hasDeal: true,
+          qualifyingPair: [units[i].item, units[j].item],
+          qualifyingCategories: [units[i].category, units[j].category],
+        };
+      }
+    }
+  }
+
+  return {
+    discount: 0,
+    hasDeal: false,
+    qualifyingPair: null,
+    qualifyingCategories: null,
+  };
 }
 
 interface CartContextType {
@@ -29,12 +79,18 @@ interface CartContextType {
     name: string;
     price: number;
     imageUrl: string;
+    category?: string;
   }) => void;
   removeFromCart: (id: string) => void;
   updateQuantity: (id: string, delta: number) => void;
   clearCart: () => void;
   totalCount: number;
   subtotal: number;
+  comboDiscount: number;
+  finalTotal: number;
+  hasDealApplied: boolean;
+  dealPair: [CartItem, CartItem] | null;
+  qualifyingCategories: [string, string] | null;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -69,10 +125,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
             const livePrice = Number(dbProd.price);
             const liveName = dbProd.name || item.name;
             const liveImage = dbProd.imageUrl || item.imageUrl;
+            const liveCategory = dbProd.category || item.category;
             if (
               item.price !== livePrice ||
               item.name !== liveName ||
-              item.imageUrl !== liveImage
+              item.imageUrl !== liveImage ||
+              item.category !== liveCategory
             ) {
               hasChanges = true;
               return {
@@ -80,6 +138,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
                 price: livePrice,
                 name: liveName,
                 imageUrl: liveImage,
+                category: liveCategory,
               };
             }
           }
@@ -140,9 +199,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
     name: string;
     price: number;
     imageUrl: string;
+    category?: string;
   }) => {
     const productId = product._id || product.id || String(Date.now());
     const incomingPrice = Number(product.price);
+    const category = product.category;
     setItems((prev) => {
       const existing = prev.find((item) => item.id === productId);
       if (existing) {
@@ -154,6 +215,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
                 price: incomingPrice, // Always refresh with current product price
                 name: product.name || item.name,
                 imageUrl: product.imageUrl || item.imageUrl,
+                category: category || item.category,
               }
             : item,
         );
@@ -166,6 +228,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           price: incomingPrice,
           imageUrl: product.imageUrl,
           quantity: 1,
+          category,
         },
       ];
     });
@@ -199,6 +262,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
     0,
   );
 
+  // Compute Two for 300 deal calculations
+  const dealResult = calculateTwoFor300Deal(items);
+  const comboDiscount = dealResult.discount;
+  const finalTotal = Math.max(0, subtotal - comboDiscount);
+  const hasDealApplied = dealResult.hasDeal && comboDiscount > 0;
+
   return (
     <CartContext.Provider
       value={{
@@ -213,6 +282,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
         clearCart,
         totalCount,
         subtotal,
+        comboDiscount,
+        finalTotal,
+        hasDealApplied,
+        dealPair: dealResult.qualifyingPair,
+        qualifyingCategories: dealResult.qualifyingCategories,
       }}
     >
       {children}
