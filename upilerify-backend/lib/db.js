@@ -105,6 +105,9 @@ const db = {
   },
 
   async findPendingOrders() {
+    if (!isConnected && MONGODB_URI) {
+      await connectDB();
+    }
     const list = [];
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
 
