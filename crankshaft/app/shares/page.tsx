@@ -351,6 +351,8 @@ export default function SharesPage() {
     availableShares: 400,
     maxPublicShares: 400,
     reservedShares: 600,
+    reservedSoldShares: 0,
+    totalSoldShares: 0,
     pricePerShare: 20,
     sharesPerPercent: 10,
     soldPercent: 0,
@@ -696,7 +698,7 @@ export default function SharesPage() {
                   icon: BarChart2,
                   label: "Market Price / Share",
                   value: `₹${currentPrice}`,
-                  sub: "Derived: Capital ÷ 1,000",
+                  sub: "Active market value",
                 },
                 {
                   icon: Users,
@@ -705,10 +707,10 @@ export default function SharesPage() {
                   sub: "Direct profit share",
                 },
                 {
-                  icon: Star,
-                  label: "Company Capital",
-                  value: `₹${(stats.totalCapital || currentPrice * 1000).toLocaleString()}`,
-                  sub: "Total valuation base",
+                  icon: CheckCircle2,
+                  label: "Shares Bought",
+                  value: `${stats.soldShares + (stats.reservedSoldShares || 0)} shares`,
+                  sub: "Market + founder pool",
                 },
                 {
                   icon: TrendingUp,

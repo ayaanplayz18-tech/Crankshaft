@@ -51,10 +51,13 @@ export const SHARES_PER_PERCENT = 10; // 10 shares = 1% profit stake
 /**
  * Pure financial formula: Computes derived Market Value per Share (m.v.) from Capital (C).
  * Formula: m.v. = Capital / (1,000 - number of shares available)
+ * Since (1,000 - available shares) equals total shares bought (market + founder),
+ * m.v. = Capital / totalSharesBought.
+ * Example: Capital ₹1,600 / 200 shares bought = ₹8.00 / share.
  */
 export function calculateMarketValueFromCapital(
   capital: number,
-  availableShares: number = 0,
+  totalSharesBought: number = 0,
 ): number {
   if (
     typeof capital !== "number" ||
@@ -64,15 +67,15 @@ export function calculateMarketValueFromCapital(
   ) {
     throw new Error("Company capital must be a positive finite number.");
   }
-  const denom = TOTAL_SHARES - (Number(availableShares) || 0);
-  const effectiveDenominator = denom > 0 ? denom : TOTAL_SHARES;
+  const bought = Number(totalSharesBought) || 0;
+  const effectiveDenominator = bought > 0 ? bought : TOTAL_SHARES;
   return Math.round((capital / effectiveDenominator) * 100) / 100;
 }
 
 /**
- * Computes currently available market shares dynamically from PAID shares in MongoDB.
+ * Computes total shares bought (market + founder) dynamically from PAID shares in MongoDB.
  */
-export async function getAvailableSharesCount(): Promise<number> {
+export async function getTotalBoughtSharesCount(): Promise<number> {
   try {
     const { default: Share } = await import("@/lib/models/Share");
     await connectDB();
@@ -80,18 +83,14 @@ export async function getAvailableSharesCount(): Promise<number> {
       { $match: { status: "PAID" } },
       {
         $group: {
-          _id: { $ifNull: ["$pool", "market"] },
+          _id: null,
           totalShares: { $sum: "$numberOfShares" },
         },
       },
     ]);
-    let marketSold = 0;
-    result.forEach((r) => {
-      if (r._id !== "reserved") marketSold += r.totalShares;
-    });
-    return Math.max(0, MAX_PUBLIC_SHARES - marketSold);
+    return result[0]?.totalShares || 0;
   } catch {
-    return MAX_PUBLIC_SHARES;
+    return 0;
   }
 }
 
@@ -156,8 +155,8 @@ export async function getShareConfig(): Promise<ShareConfigData> {
           ? config.totalCapital
           : (config.pricePerShare || DEFAULT_PRICE_PER_SHARE) * TOTAL_SHARES;
 
-      const availableShares = await getAvailableSharesCount();
-      const price = calculateMarketValueFromCapital(capital, availableShares);
+      const totalBought = await getTotalBoughtSharesCount();
+      const price = calculateMarketValueFromCapital(capital, totalBought);
       const divPool = Math.max(0, config.dividendPool || 0);
       const divMetrics = calculateDividendMetrics(capital, divPool);
 
@@ -254,10 +253,10 @@ export async function updateCompanyCapital(
 
   const cleanCapital = Math.round(newCapital * 100) / 100;
   const cleanReason = reason.trim();
-  const availableShares = await getAvailableSharesCount();
+  const totalBought = await getTotalBoughtSharesCount();
   const derivedMarketValue = calculateMarketValueFromCapital(
     cleanCapital,
-    availableShares,
+    totalBought,
   );
 
   await connectDB();

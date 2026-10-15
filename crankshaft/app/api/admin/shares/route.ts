@@ -172,11 +172,12 @@ export async function GET(req: NextRequest) {
         stakeholderCount: stakeholders.length,
         pricePerShare: calculateMarketValueFromCapital(
           shareConfig.totalCapital,
-          availableMarketShares,
+          totalSoldShares,
         ),
         totalCapital: shareConfig.totalCapital,
         isMarketValueDerived: true,
-        marketValueFormula: "Market Value = Capital / (1,000 - available shares)",
+        marketValueFormula:
+          "Market Value = Capital / total shares bought (market + founder)",
         dividendPool: shareConfig.dividendPool,
         dividendPerShare: shareConfig.dividendPerShare,
         dividendYieldPercent: shareConfig.dividendYieldPercent,
@@ -479,7 +480,8 @@ export async function PATCH(req: NextRequest) {
       totalCapital: currentCapital,
       pricePerShare: currentMarketValue,
       isMarketValueDerived: true,
-      marketValueFormula: "Market Value = Capital / (1,000 - available shares)",
+      marketValueFormula:
+        "Market Value = Capital / total shares bought (market + founder)",
       previousCapital,
       previousMarketValue,
       reason,

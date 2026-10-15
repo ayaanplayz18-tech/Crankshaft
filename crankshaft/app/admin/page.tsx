@@ -167,6 +167,8 @@ interface ShareStats {
   reservedTotal?: number;
   reservedAllocated?: number;
   reservedRemaining?: number;
+  reservedSoldShares?: number;
+  totalSoldShares?: number;
   totalAllocated?: number;
   totalRemaining?: number;
   reservedPoolValuation?: number;
@@ -1832,12 +1834,7 @@ export default function AdminDashboardPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setCapitalInput(
-                      shareStats?.totalCapital ??
-                        (shareStats?.pricePerShare
-                          ? shareStats.pricePerShare * Math.max(1, 1000 - (shareStats.availableShares ?? 400))
-                          : 20000),
-                    );
+                    setCapitalInput(shareStats?.totalCapital ?? 1600);
                     setCapitalReason("");
                     setCapitalError("");
                     setModalCapitalOpen(true);
@@ -1847,11 +1844,10 @@ export default function AdminDashboardPage() {
                 >
                   <Coins className="w-4 h-4 text-emerald-400" />
                   <span>
-                    Capital: ₹
-                    {(shareStats?.totalCapital ?? 20000).toLocaleString()}
+                    Mkt: ₹{shareStats?.pricePerShare ?? 8}/sh
                   </span>
                   <span className="text-[10px] text-neutral-400 font-mono">
-                    (Mkt: ₹{shareStats?.pricePerShare ?? 20}/sh)
+                    (Adjust Capital)
                   </span>
                   <Pencil className="w-3 h-3 text-emerald-400/80" />
                 </button>
@@ -1874,21 +1870,16 @@ export default function AdminDashboardPage() {
 
             {/* KPI Metric Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5">
-              {/* Card 1: Company Capital & Derived Market Value */}
+              {/* Card 1: Market Value */}
               <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800 space-y-1.5 relative overflow-hidden group hover:border-emerald-500/40 transition-colors">
                 <div className="flex items-center justify-between text-neutral-400 text-xs">
                   <span className="font-semibold text-white">
-                    Company Capital
+                    Market Value
                   </span>
                   <button
                     type="button"
                     onClick={() => {
-                      setCapitalInput(
-                        shareStats?.totalCapital ??
-                          (shareStats?.pricePerShare
-                            ? shareStats.pricePerShare * Math.max(1, 1000 - (shareStats.availableShares ?? 400))
-                            : 20000),
-                      );
+                      setCapitalInput(shareStats?.totalCapital ?? 1600);
                       setCapitalReason("");
                       setCapitalError("");
                       setModalCapitalOpen(true);
@@ -1897,16 +1888,25 @@ export default function AdminDashboardPage() {
                     title="Adjust Capital"
                   >
                     <Pencil className="w-3 h-3" />
-                    <span>Adjust</span>
+                    <span>Adjust Capital</span>
                   </button>
                 </div>
                 <div className="text-2xl font-black text-emerald-400 font-mono">
-                  ₹{(shareStats?.totalCapital ?? 20000).toLocaleString()}
+                  ₹{shareStats?.pricePerShare ?? 8}{" "}
+                  <span className="text-xs text-neutral-400 font-normal">
+                    / share
+                  </span>
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-neutral-400 font-mono pt-1 border-t border-neutral-800/60">
                   <span className="flex items-center gap-1 text-cyan-400">
                     <Lock className="w-3 h-3 text-cyan-400/80" />
-                    <span>Mkt: ₹{shareStats?.pricePerShare ?? 20}/sh</span>
+                    <span>
+                      {shareStats?.totalSoldShares ??
+                        ((shareStats?.marketAllocated ?? 0) +
+                          (shareStats?.reservedAllocated ?? 0) ||
+                          200)}{" "}
+                      shares bought
+                    </span>
                   </span>
                   <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-950/60 text-cyan-400 border border-cyan-800/60">
                     Derived
@@ -3049,10 +3049,15 @@ export default function AdminDashboardPage() {
                     Capital Valuation Presets:
                   </span>
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    {[20000, 30000, 50000, 100000, 250000, 500000].map(
+                    {[1600, 2000, 3000, 5000, 10000, 20000].map(
                       (preset) => {
-                        const available = Number(shareStats?.availableShares ?? 400);
-                        const denom = Math.max(1, 1000 - available);
+                        const totalBought = Number(
+                          shareStats?.totalSoldShares ??
+                            ((shareStats?.marketAllocated ?? 0) +
+                              (shareStats?.reservedAllocated ?? 0) ||
+                              200),
+                        );
+                        const denom = totalBought > 0 ? totalBought : 1000;
                         const presetPerShare = preset / denom;
                         return (
                           <button
@@ -3065,7 +3070,7 @@ export default function AdminDashboardPage() {
                                 : "bg-neutral-900 text-neutral-400 hover:text-white border-neutral-800"
                             }`}
                           >
-                            ₹{(preset / 1000).toFixed(0)}k (₹
+                            ₹{preset.toLocaleString()} (₹
                             {presetPerShare.toFixed(1)}/sh)
                           </button>
                         );
@@ -3094,7 +3099,7 @@ export default function AdminDashboardPage() {
                     type="text"
                     disabled
                     readOnly
-                    value={`${((parseFloat(String(capitalInput)) || 0) / Math.max(1, 1000 - Number(shareStats?.availableShares ?? 400))).toFixed(2)} per share`}
+                    value={`${((parseFloat(String(capitalInput)) || 0) / (shareStats?.totalSoldShares || (shareStats?.marketAllocated ?? 0) + (shareStats?.reservedAllocated ?? 0) || 200)).toFixed(2)} per share`}
                     className="w-full pl-8 pr-4 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm text-cyan-400 font-mono font-bold cursor-not-allowed select-none opacity-90 shadow-inner"
                   />
                 </div>
@@ -3126,8 +3131,13 @@ export default function AdminDashboardPage() {
 
               {/* Live Projected Valuation Impact */}
               {(() => {
-                const available = Number(shareStats?.availableShares ?? 400);
-                const denom = Math.max(1, 1000 - available);
+                const totalBought = Number(
+                  shareStats?.totalSoldShares ??
+                    ((shareStats?.marketAllocated ?? 0) +
+                      (shareStats?.reservedAllocated ?? 0) ||
+                      200),
+                );
+                const denom = totalBought > 0 ? totalBought : 1000;
                 const currentCapital = parseFloat(String(capitalInput)) || 0;
                 const derivedSharePrice = currentCapital / denom;
                 return (
@@ -3151,12 +3161,15 @@ export default function AdminDashboardPage() {
                       </span>
                     </div>
                     <div className="flex justify-between text-neutral-300 text-[11px]">
-                      <span>Public Pool (400 Shares / 40%):</span>
+                      <span>Total Bought ({totalBought} Shares):</span>
                       <span className="font-bold text-indigo-300">
                         ₹
-                        {(derivedSharePrice * 400).toLocaleString(undefined, {
-                          maximumFractionDigits: 2,
-                        })}
+                        {(derivedSharePrice * totalBought).toLocaleString(
+                          undefined,
+                          {
+                            maximumFractionDigits: 2,
+                          },
+                        )}
                       </span>
                     </div>
                     <div className="flex justify-between text-neutral-200 pt-1.5 border-t border-emerald-500/20 font-bold text-xs">

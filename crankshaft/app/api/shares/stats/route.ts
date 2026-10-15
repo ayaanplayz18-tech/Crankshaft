@@ -42,10 +42,10 @@ export async function GET() {
     const availableReservedShares = Math.max(0, RESERVED_SHARES - reservedSold);
     const totalSoldShares = marketSold + reservedSold;
 
-    // Derived market value formula: Capital / (1,000 - availableShares)
+    // Derived market value formula: Capital / (1,000 - totalAvailableShares) = Capital / totalSoldShares
     const derivedPrice = calculateMarketValueFromCapital(
       config.totalCapital,
-      availableMarketShares,
+      totalSoldShares,
     );
 
     // Percentage calculations out of TOTAL_SHARES (1,000)
