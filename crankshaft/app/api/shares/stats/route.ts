@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Share from "@/lib/models/Share";
 import { connectDB } from "@/lib/mongodb";
 import {
+  calculateMarketValueFromCapital,
   getShareConfig,
   MAX_PUBLIC_SHARES,
   RESERVED_PERCENT,
@@ -41,6 +42,12 @@ export async function GET() {
     const availableReservedShares = Math.max(0, RESERVED_SHARES - reservedSold);
     const totalSoldShares = marketSold + reservedSold;
 
+    // Derived market value formula: Capital / (1,000 - availableShares)
+    const derivedPrice = calculateMarketValueFromCapital(
+      config.totalCapital,
+      availableMarketShares,
+    );
+
     // Percentage calculations out of TOTAL_SHARES (1,000)
     const marketSoldPercent = parseFloat(
       ((marketSold / TOTAL_SHARES) * 100).toFixed(2),
@@ -65,7 +72,7 @@ export async function GET() {
       reservedSoldShares: reservedSold,
       availableReservedShares,
       totalSoldShares,
-      pricePerShare,
+      pricePerShare: derivedPrice,
       isMarketValueDerived: true,
       dividendPool: config.dividendPool,
       dividendPerShare: config.dividendPerShare,

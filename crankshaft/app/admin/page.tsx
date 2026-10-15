@@ -1835,7 +1835,7 @@ export default function AdminDashboardPage() {
                     setCapitalInput(
                       shareStats?.totalCapital ??
                         (shareStats?.pricePerShare
-                          ? shareStats.pricePerShare * 1000
+                          ? shareStats.pricePerShare * Math.max(1, 1000 - (shareStats.availableShares ?? 400))
                           : 20000),
                     );
                     setCapitalReason("");
@@ -1873,7 +1873,7 @@ export default function AdminDashboardPage() {
             </div>
 
             {/* KPI Metric Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5">
               {/* Card 1: Company Capital & Derived Market Value */}
               <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800 space-y-1.5 relative overflow-hidden group hover:border-emerald-500/40 transition-colors">
                 <div className="flex items-center justify-between text-neutral-400 text-xs">
@@ -1886,7 +1886,7 @@ export default function AdminDashboardPage() {
                       setCapitalInput(
                         shareStats?.totalCapital ??
                           (shareStats?.pricePerShare
-                            ? shareStats.pricePerShare * 1000
+                            ? shareStats.pricePerShare * Math.max(1, 1000 - (shareStats.availableShares ?? 400))
                             : 20000),
                       );
                       setCapitalReason("");
@@ -2002,20 +2002,6 @@ export default function AdminDashboardPage() {
                     100
                   ).toFixed(1)}
                   % total company equity
-                </div>
-              </div>
-
-              {/* Card 6: Total Stake Capital */}
-              <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800 space-y-1.5">
-                <div className="flex items-center justify-between text-neutral-400 text-xs">
-                  <span>Capital Value</span>
-                  <Receipt className="w-4 h-4 text-amber-400" />
-                </div>
-                <div className="text-2xl font-black text-white font-mono">
-                  ₹{(shareStats?.totalRevenue ?? 0).toLocaleString()}
-                </div>
-                <div className="text-[10px] text-neutral-500 font-mono">
-                  Total collected investments
                 </div>
               </div>
             </div>
@@ -3064,21 +3050,26 @@ export default function AdminDashboardPage() {
                   </span>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {[20000, 30000, 50000, 100000, 250000, 500000].map(
-                      (preset) => (
-                        <button
-                          key={preset}
-                          type="button"
-                          onClick={() => setCapitalInput(preset)}
-                          className={`text-[10px] px-2.5 py-1 rounded-lg font-mono font-semibold transition-colors border cursor-pointer ${
-                            Number(capitalInput) === preset
-                              ? "bg-emerald-600 text-white border-emerald-500"
-                              : "bg-neutral-900 text-neutral-400 hover:text-white border-neutral-800"
-                          }`}
-                        >
-                          ₹{(preset / 1000).toFixed(0)}k (₹
-                          {(preset / 1000).toFixed(0)}/sh)
-                        </button>
-                      ),
+                      (preset) => {
+                        const available = Number(shareStats?.availableShares ?? 400);
+                        const denom = Math.max(1, 1000 - available);
+                        const presetPerShare = preset / denom;
+                        return (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setCapitalInput(preset)}
+                            className={`text-[10px] px-2.5 py-1 rounded-lg font-mono font-semibold transition-colors border cursor-pointer ${
+                              Number(capitalInput) === preset
+                                ? "bg-emerald-600 text-white border-emerald-500"
+                                : "bg-neutral-900 text-neutral-400 hover:text-white border-neutral-800"
+                            }`}
+                          >
+                            ₹{(preset / 1000).toFixed(0)}k (₹
+                            {presetPerShare.toFixed(1)}/sh)
+                          </button>
+                        );
+                      },
                     )}
                   </div>
                 </div>
@@ -3103,7 +3094,7 @@ export default function AdminDashboardPage() {
                     type="text"
                     disabled
                     readOnly
-                    value={`${((parseFloat(String(capitalInput)) || 0) / 1000).toFixed(2)} per share`}
+                    value={`${((parseFloat(String(capitalInput)) || 0) / Math.max(1, 1000 - Number(shareStats?.availableShares ?? 400))).toFixed(2)} per share`}
                     className="w-full pl-8 pr-4 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm text-cyan-400 font-mono font-bold cursor-not-allowed select-none opacity-90 shadow-inner"
                   />
                 </div>
@@ -3134,46 +3125,49 @@ export default function AdminDashboardPage() {
               </div>
 
               {/* Live Projected Valuation Impact */}
-              <div className="p-3.5 rounded-xl bg-emerald-500/[0.08] border border-emerald-500/20 space-y-1.5 font-mono text-xs">
-                <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
-                  Live Valuation Recalibration
-                </div>
-                <div className="flex justify-between text-neutral-300 text-[11px]">
-                  <span>1 Share Value (Derived):</span>
-                  <span className="font-bold text-white">
-                    ₹
-                    {((parseFloat(String(capitalInput)) || 0) / 1000).toFixed(
-                      2,
-                    )}
-                  </span>
-                </div>
-                <div className="flex justify-between text-neutral-300 text-[11px]">
-                  <span>10 Shares (1% Company Stake):</span>
-                  <span className="font-bold text-white">
-                    ₹
-                    {(
-                      ((parseFloat(String(capitalInput)) || 0) / 1000) *
-                      10
-                    ).toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between text-neutral-300 text-[11px]">
-                  <span>Public Pool (400 Shares / 40%):</span>
-                  <span className="font-bold text-indigo-300">
-                    ₹
-                    {(
-                      ((parseFloat(String(capitalInput)) || 0) / 1000) *
-                      400
-                    ).toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between text-neutral-200 pt-1.5 border-t border-emerald-500/20 font-bold text-xs">
-                  <span>Total Capital Valuation:</span>
-                  <span className="text-emerald-400">
-                    ₹{(parseFloat(String(capitalInput)) || 0).toLocaleString()}
-                  </span>
-                </div>
-              </div>
+              {(() => {
+                const available = Number(shareStats?.availableShares ?? 400);
+                const denom = Math.max(1, 1000 - available);
+                const currentCapital = parseFloat(String(capitalInput)) || 0;
+                const derivedSharePrice = currentCapital / denom;
+                return (
+                  <div className="p-3.5 rounded-xl bg-emerald-500/[0.08] border border-emerald-500/20 space-y-1.5 font-mono text-xs">
+                    <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
+                      Live Valuation Recalibration
+                    </div>
+                    <div className="flex justify-between text-neutral-300 text-[11px]">
+                      <span>1 Share Value (Derived):</span>
+                      <span className="font-bold text-white">
+                        ₹{derivedSharePrice.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-neutral-300 text-[11px]">
+                      <span>10 Shares (1% Company Stake):</span>
+                      <span className="font-bold text-white">
+                        ₹
+                        {(derivedSharePrice * 10).toLocaleString(undefined, {
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-neutral-300 text-[11px]">
+                      <span>Public Pool (400 Shares / 40%):</span>
+                      <span className="font-bold text-indigo-300">
+                        ₹
+                        {(derivedSharePrice * 400).toLocaleString(undefined, {
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-neutral-200 pt-1.5 border-t border-emerald-500/20 font-bold text-xs">
+                      <span>Total Capital Valuation:</span>
+                      <span className="text-emerald-400">
+                        ₹{currentCapital.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Actions */}
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-800">

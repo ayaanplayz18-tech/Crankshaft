@@ -9,11 +9,11 @@ import {
   updateSharePrice,
 } from "../lib/shares";
 
-test("calculateMarketValueFromCapital derives price per share strictly from capital (P = C / 1,000)", () => {
-  assert.equal(calculateMarketValueFromCapital(20000), 20);
+test("calculateMarketValueFromCapital derives price per share strictly from capital (m.v. = capital / (1,000 - availableShares))", () => {
+  assert.equal(calculateMarketValueFromCapital(20000, 0), 20);
+  assert.equal(calculateMarketValueFromCapital(30000, 400), 50);
+  assert.equal(calculateMarketValueFromCapital(20000, 320), 29.41);
   assert.equal(calculateMarketValueFromCapital(50000), 50);
-  assert.equal(calculateMarketValueFromCapital(37500), 37.5);
-  assert.equal(calculateMarketValueFromCapital(100000), 100);
 
   // Negative and zero capital must be rejected
   assert.throws(() => calculateMarketValueFromCapital(0), {

@@ -10,6 +10,7 @@ import Share from "@/lib/models/Share";
 import User from "@/lib/models/User";
 import { connectDB } from "@/lib/mongodb";
 import {
+  calculateMarketValueFromCapital,
   getShareConfig,
   getSharePrice,
   MAX_PUBLIC_SHARES,
@@ -169,11 +170,13 @@ export async function GET(req: NextRequest) {
           ((totalSoldShares / TOTAL_SHARES) * 100).toFixed(2),
         ),
         stakeholderCount: stakeholders.length,
-        totalRevenue,
-        pricePerShare: currentPrice,
+        pricePerShare: calculateMarketValueFromCapital(
+          shareConfig.totalCapital,
+          availableMarketShares,
+        ),
         totalCapital: shareConfig.totalCapital,
         isMarketValueDerived: true,
-        marketValueFormula: "Total Capital / 1,000 shares",
+        marketValueFormula: "Market Value = Capital / (1,000 - available shares)",
         dividendPool: shareConfig.dividendPool,
         dividendPerShare: shareConfig.dividendPerShare,
         dividendYieldPercent: shareConfig.dividendYieldPercent,
@@ -476,7 +479,7 @@ export async function PATCH(req: NextRequest) {
       totalCapital: currentCapital,
       pricePerShare: currentMarketValue,
       isMarketValueDerived: true,
-      marketValueFormula: "Market Value = Total Capital / 1,000 shares",
+      marketValueFormula: "Market Value = Capital / (1,000 - available shares)",
       previousCapital,
       previousMarketValue,
       reason,
