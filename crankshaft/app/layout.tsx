@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CrankShaft — Drive Your Investments",
+  title: "CrankShaft",
   description:
-    "Explore, share, and invest in the automotive world with CrankShaft — the premium platform for car enthusiasts and investors.",
+    "",
   icons: {
     icon: "/images/Crankshaft.png",
     shortcut: "/images/Crankshaft.png",
