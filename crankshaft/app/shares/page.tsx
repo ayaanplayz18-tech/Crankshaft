@@ -19,7 +19,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import TearTicket from "@/components/TearTicket";
 import Navbar from "../components/Navbar";
 import SlideCommit from "../components/SlideCommit";
@@ -27,7 +27,7 @@ import SlideCommit from "../components/SlideCommit";
 const TearTicketComponent = TearTicket as React.ComponentType<any>;
 
 // ── Constants ────────────────────────────────────────────────────────────────
-const PRICE_PER_SHARE = 20;
+const DEFAULT_PRICE_PER_SHARE = 20;
 const SHARES_PER_PERCENT = 10;
 const COMPANY = "CrankShaft";
 
@@ -323,7 +323,8 @@ function DonutChart({
             fontSize="7.5"
             fontFamily="monospace"
           >
-            {soldShares} / {totalShares - 600} SHARES CLAIMED • {availableShares} OPEN
+            {soldShares} / {totalShares - 600} SHARES CLAIMED •{" "}
+            {availableShares} OPEN
           </text>
         </g>
       </svg>
@@ -345,6 +346,7 @@ export default function SharesPage() {
   // Stats state
   const [stats, setStats] = useState({
     totalShares: 1000,
+    totalCapital: 20000,
     soldShares: 0,
     availableShares: 400,
     maxPublicShares: 400,
@@ -354,6 +356,9 @@ export default function SharesPage() {
     soldPercent: 0,
     reservedPercent: 60,
     availablePercent: 40,
+    dividendPool: 0,
+    dividendPerShare: 0,
+    dividendYieldPercent: 0,
   });
   const [statsLoading, setStatsLoading] = useState(true);
   const [chartAnimating, setChartAnimating] = useState(false);
@@ -586,7 +591,8 @@ export default function SharesPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const totalCost = quantity * PRICE_PER_SHARE;
+  const currentPrice = stats.pricePerShare || DEFAULT_PRICE_PER_SHARE;
+  const totalCost = quantity * currentPrice;
   const sharesPercent = (quantity / SHARES_PER_PERCENT).toFixed(1);
 
   return (
@@ -686,17 +692,38 @@ export default function SharesPage() {
             {/* Quick Stats */}
             <div className="grid grid-cols-2 gap-3 w-full max-w-xs">
               {[
-                { icon: BarChart2, label: "Price / Share", value: "₹20" },
-                { icon: Users, label: "10 Shares =", value: "1% profit share" },
+                {
+                  icon: BarChart2,
+                  label: "Market Price / Share",
+                  value: `₹${currentPrice}`,
+                  sub: "Derived: Capital ÷ 1,000",
+                },
+                {
+                  icon: Users,
+                  label: "10 Shares =",
+                  value: "1% equity",
+                  sub: "Direct profit share",
+                },
                 {
                   icon: Star,
-                  label: "Max Public",
-                  value: `${stats.maxPublicShares} shares`,
+                  label: "Company Capital",
+                  value: `₹${(stats.totalCapital || currentPrice * 1000).toLocaleString()}`,
+                  sub: "Total valuation base",
                 },
                 {
                   icon: TrendingUp,
-                  label: "Still Available",
-                  value: `${stats.availableShares}`,
+                  label:
+                    stats.dividendYieldPercent > 0
+                      ? "Dividend Yield"
+                      : "Still Available",
+                  value:
+                    stats.dividendYieldPercent > 0
+                      ? `${stats.dividendYieldPercent}%`
+                      : `${stats.availableShares} shares`,
+                  sub:
+                    stats.dividendYieldPercent > 0
+                      ? `DPS: ₹${stats.dividendPerShare}/sh`
+                      : "40% public pool",
                 },
               ].map((s) => (
                 <div
@@ -708,6 +735,11 @@ export default function SharesPage() {
                     {s.label}
                   </div>
                   <div className="text-sm font-black text-white">{s.value}</div>
+                  {s.sub && (
+                    <div className="text-[9px] text-neutral-400 font-mono mt-0.5">
+                      {s.sub}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

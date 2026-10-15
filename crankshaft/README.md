@@ -1,4 +1,4 @@
-# CrankShaft — Streetwear & Automotive Posters Store
+# CrankShaft — Automotive Posters Store
 
 A modern Next.js 16 e-commerce web application with **UPIlerify** automated bank credit-alert verification via delayed-cron IMAP.
 

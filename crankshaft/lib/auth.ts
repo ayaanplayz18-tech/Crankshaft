@@ -62,15 +62,14 @@ export async function checkAdminAccess(
 
 export function isGhost(session: SessionPayload | null | undefined): boolean {
   if (!session) return false;
-  return session.role === "ghost" || session.username === "ayaan_admin";
+  return session.role === "ghost";
 }
 
 export async function isGhostSession(
   session: SessionPayload | null | undefined,
 ): Promise<boolean> {
   if (!session) return false;
-  if (session.role === "ghost" || session.username === "ayaan_admin")
-    return true;
+  if (session.role === "ghost") return true;
   try {
     const { default: User } = await import("@/lib/models/User");
     const { connectDB } = await import("@/lib/mongodb");
@@ -82,9 +81,7 @@ export async function isGhostSession(
       .lean();
     return user?.role === "ghost";
   } catch {
-    return (
-      (session.role as string) === "ghost" || session.username === "ayaan_admin"
-    );
+    return (session.role as string) === "ghost";
   }
 }
 

@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
-import AdminLog from "@/lib/models/AdminLog";
 import Order from "@/lib/models/Order";
 import Product from "@/lib/models/Product";
-import User from "@/lib/models/User";
 import { connectDB } from "@/lib/mongodb";
 
 const UPILERIFY_URL = process.env.UPILERIFY_URL || "http://localhost:3001";
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
-const UPI_ID = process.env.UPI_ID || "ayaan@okaxis";
+const UPI_ID = process.env.UPI_ID || "8123738080@fam";
 const UPI_PAYEE_NAME = process.env.UPI_PAYEE_NAME || "CrankShaft";
 
 export async function POST(req: Request) {
@@ -59,36 +57,9 @@ export async function POST(req: Request) {
       });
     }
 
-    // Apply "Two for 300 deal" discount (if two posters have different categories, strictly one pair)
-    const units: { price: number; category: string }[] = [];
-    for (const it of verifiedItems) {
-      const cat = (it.category || "General").trim();
-      for (let i = 0; i < it.quantity; i++) {
-        units.push({ price: it.price, category: cat });
-      }
-    }
-
-    let dealDiscount = 0;
-    if (units.length >= 2) {
-      for (let i = 0; i < units.length; i++) {
-        for (let j = i + 1; j < units.length; j++) {
-          if (units[i].category.toLowerCase() !== units[j].category.toLowerCase()) {
-            const pairTotal = units[i].price + units[j].price;
-            dealDiscount = Math.max(0, pairTotal - 300);
-            break;
-          }
-        }
-        if (dealDiscount > 0) break;
-      }
-    }
-
-    const discountedVerified = Math.max(0, verifiedAmount - dealDiscount);
-
     // Use verified server amount if products were verified, otherwise fallback to parsedAmount
     const finalAmount =
-      discountedVerified > 0
-        ? parseFloat(discountedVerified.toFixed(2))
-        : parsedAmount;
+      verifiedAmount > 0 ? parseFloat(verifiedAmount.toFixed(2)) : parsedAmount;
 
     // Generate unique internal Order ID
     const internalOrderId = `ord_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -163,38 +134,6 @@ export async function POST(req: Request) {
           "- using built-in intent fallback.",
         );
       }
-    }
-
-    // Log command in Admin Terminal (suppressed for ghost role)
-    const { getSession, isGhostSession } = await import("@/lib/auth");
-    const session = await getSession();
-    let isGhostUser = await isGhostSession(session);
-    if (!isGhostUser && userId && userId !== "guest_user") {
-      try {
-        const u = await User.findOne({
-          $or: [{ _id: userId }, { username: userId }],
-        })
-          .select("role username")
-          .lean();
-        if (u?.role === "ghost" || u?.username === "ayaan_admin") {
-          isGhostUser = true;
-        }
-      } catch {
-        if (userId === "ayaan_admin") isGhostUser = true;
-      }
-    }
-    if (!isGhostUser) {
-      await AdminLog.create({
-        adminName: "system",
-        command: `Order initiated: ${order.orderId} for ₹${order.expectedAmount.toFixed(2)} (via UPI)`,
-        actionType: "SYSTEM",
-        metadata: {
-          orderId: order.orderId,
-          amount: order.amount,
-          expectedAmount: order.expectedAmount,
-          userId: order.userId,
-        },
-      });
     }
 
     return NextResponse.json({

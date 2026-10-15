@@ -20,24 +20,31 @@ export async function GET(req: NextRequest) {
 
     await connectDB();
 
-    // Query all usernames that have role 'ghost' in the database
-    const ghostUsers = await User.find({ role: "ghost" }).distinct("username");
-    const ghostNames = Array.from(new Set([...ghostUsers, "ayaan_admin"]));
+    const isOwnerOrMasterAdmin =
+      session.username === "ayaan_admin" ||
+      session.username === "ayaan_syed" ||
+      session.role === "admin";
 
-    // Strict filter: exclude all logs created by, targeting, or mentioning any ghost user
-    const query: any = {
-      adminName: { $nin: ghostNames },
-      "metadata.role": { $ne: "ghost" },
-      "metadata.username": { $nin: ghostNames },
-      "metadata.adminName": { $nin: ghostNames },
-      "metadata.grantedBy": { $nin: ghostNames },
-    };
+    let query: any = {};
 
-    if (ghostNames.length > 0) {
-      const escaped = ghostNames
-        .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-        .join("|");
-      query.command = { $not: new RegExp(`(${escaped})`, "i") };
+    if (!isOwnerOrMasterAdmin) {
+      // For restricted accounts, hide internal ghost accounts if any
+      const ghostUsers = await User.find({ role: "ghost" }).distinct(
+        "username",
+      );
+      if (ghostUsers.length > 0) {
+        query = {
+          adminName: { $nin: ghostUsers },
+          "metadata.role": { $ne: "ghost" },
+          "metadata.username": { $nin: ghostUsers },
+          "metadata.adminName": { $nin: ghostUsers },
+          "metadata.grantedBy": { $nin: ghostUsers },
+        };
+        const escaped = ghostUsers
+          .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+          .join("|");
+        query.command = { $not: new RegExp(`(${escaped})`, "i") };
+      }
     }
 
     const logs = await AdminLog.find(query)
@@ -70,23 +77,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Command string required" },
         { status: 400 },
-      );
-    }
-
-    // Whatever ghost does will not show in the terminal
-    if (await isGhostSession(session)) {
-      return NextResponse.json(
-        {
-          log: {
-            _id: `ghost_${Date.now()}`,
-            adminName: session.username,
-            command: `${session.username}: ${customCommand}`,
-            actionType: "SYSTEM",
-            createdAt: new Date().toISOString(),
-          },
-          ghost: true,
-        },
-        { status: 201 },
       );
     }
 

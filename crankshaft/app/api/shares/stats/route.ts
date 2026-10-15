@@ -1,50 +1,83 @@
 import { NextResponse } from "next/server";
 import Share from "@/lib/models/Share";
 import { connectDB } from "@/lib/mongodb";
+import {
+  getShareConfig,
+  MAX_PUBLIC_SHARES,
+  RESERVED_PERCENT,
+  RESERVED_SHARES,
+  SHARES_PER_PERCENT,
+  TOTAL_SHARES,
+} from "@/lib/shares";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// Constants
-const TOTAL_SHARES = 1000; // 100% = 1000 shares (10 shares = 1%)
-const RESERVED_PERCENT = 60; // 60% of total is gray/reserved
-const MAX_PUBLIC_SHARES = Math.round(
-  TOTAL_SHARES * (1 - RESERVED_PERCENT / 100),
-); // 400 shares = 40%
-
 export async function GET() {
   try {
     await connectDB();
+    const config = await getShareConfig();
+    const pricePerShare = config.pricePerShare;
 
-    // Count all PAID shares
+    // Group PAID shares by pool
     const result = await Share.aggregate([
       { $match: { status: "PAID" } },
-      { $group: { _id: null, totalShares: { $sum: "$numberOfShares" } } },
+      {
+        $group: {
+          _id: { $ifNull: ["$pool", "market"] },
+          totalShares: { $sum: "$numberOfShares" },
+        },
+      },
     ]);
 
-    const soldShares = result[0]?.totalShares ?? 0;
-    const availableShares = Math.max(0, MAX_PUBLIC_SHARES - soldShares);
+    let marketSold = 0;
+    let reservedSold = 0;
+    result.forEach((r) => {
+      if (r._id === "reserved") reservedSold += r.totalShares;
+      else marketSold += r.totalShares;
+    });
 
-    // Percentage calculations (out of TOTAL_SHARES to make the pie make sense)
-    const soldPercent = parseFloat(
-      ((soldShares / TOTAL_SHARES) * 100).toFixed(2),
+    const availableMarketShares = Math.max(0, MAX_PUBLIC_SHARES - marketSold);
+    const availableReservedShares = Math.max(0, RESERVED_SHARES - reservedSold);
+    const totalSoldShares = marketSold + reservedSold;
+
+    // Percentage calculations out of TOTAL_SHARES (1,000)
+    const marketSoldPercent = parseFloat(
+      ((marketSold / TOTAL_SHARES) * 100).toFixed(2),
     );
-    const reservedPercent = RESERVED_PERCENT;
+    const reservedSoldPercent = parseFloat(
+      ((reservedSold / TOTAL_SHARES) * 100).toFixed(2),
+    );
+    const remainingReservedPercent = parseFloat(
+      ((availableReservedShares / TOTAL_SHARES) * 100).toFixed(2),
+    );
     const availablePercent = parseFloat(
-      (100 - reservedPercent - soldPercent).toFixed(2),
+      ((availableMarketShares / TOTAL_SHARES) * 100).toFixed(2),
     );
 
     return NextResponse.json({
       totalShares: TOTAL_SHARES,
-      soldShares,
-      availableShares,
+      totalCapital: config.totalCapital,
+      soldShares: marketSold,
+      availableShares: availableMarketShares,
       maxPublicShares: MAX_PUBLIC_SHARES,
-      reservedShares: TOTAL_SHARES - MAX_PUBLIC_SHARES,
-      pricePerShare: 20,
-      sharesPerPercent: 10,
-      soldPercent,
-      reservedPercent,
-      availablePercent: Math.max(0, availablePercent),
+      reservedShares: RESERVED_SHARES,
+      reservedSoldShares: reservedSold,
+      availableReservedShares,
+      totalSoldShares,
+      pricePerShare,
+      isMarketValueDerived: true,
+      dividendPool: config.dividendPool,
+      dividendPerShare: config.dividendPerShare,
+      dividendYieldPercent: config.dividendYieldPercent,
+      sharesPerPercent: SHARES_PER_PERCENT,
+      soldPercent: marketSoldPercent,
+      reservedPercent: remainingReservedPercent,
+      reservedSoldPercent,
+      availablePercent,
+      totalCompanyValuation: config.totalCapital,
+      publicPoolValuation: MAX_PUBLIC_SHARES * pricePerShare,
+      reservedPoolValuation: RESERVED_SHARES * pricePerShare,
     });
   } catch (err) {
     console.error("[SHARES_STATS_ERROR]", err);

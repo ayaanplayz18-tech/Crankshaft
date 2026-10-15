@@ -15,15 +15,26 @@ export async function GET(req: NextRequest) {
 
     await connectDB();
 
-    // Query paid orders
-    const paidOrders = await Order.find({ status: "PAID" })
+    // Query paid merchandise/poster orders strictly (excluding shares receipts)
+    const storePaidQuery = {
+      status: "PAID",
+      "metadata.type": { $ne: "shares" },
+      "items.productId": { $ne: "shares" },
+    };
+
+    const paidOrders: any[] = await Order.find(storePaidQuery as any)
       .sort({ paidAt: -1, createdAt: -1 })
       .lean();
 
-    // Also fetch all orders count if needed
-    const allOrdersCount = await Order.countDocuments();
+    // Fetch store merchandise orders count strictly
+    const allOrdersCount = await Order.countDocuments({
+      "metadata.type": { $ne: "shares" },
+      "items.productId": { $ne: "shares" },
+    });
     const pendingOrdersCount = await Order.countDocuments({
       status: "PENDING",
+      "metadata.type": { $ne: "shares" },
+      "items.productId": { $ne: "shares" },
     });
 
     // Aggregate metrics

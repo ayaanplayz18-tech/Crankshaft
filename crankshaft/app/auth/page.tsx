@@ -12,6 +12,7 @@ import {
   Sparkles,
   User as UserIcon,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, useTransition } from "react";
@@ -205,13 +206,29 @@ function AuthForm() {
           </Link>
 
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-neutral-900 text-neutral-300 border border-neutral-800">
-            <Sparkles className="w-3 h-3 text-neutral-400" />
+            <Image
+              src="/images/Crankshaft.png"
+              alt="CrankShaft"
+              width={14}
+              height={14}
+              className="w-3.5 h-3.5 object-contain"
+            />
             <span>CrankShaft Account</span>
           </span>
         </div>
 
         {/* Heading */}
         <div className="text-center mb-6">
+          <div className="mx-auto w-12 h-12 rounded-2xl bg-neutral-900 border border-neutral-800 p-2 flex items-center justify-center mb-3 shadow-lg">
+            <Image
+              src="/images/Crankshaft.png"
+              alt="CrankShaft Logo"
+              width={40}
+              height={40}
+              className="w-full h-full object-contain"
+              priority
+            />
+          </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
             {mode === "signup" ? "Get Started" : "Welcome Back"}
           </h1>

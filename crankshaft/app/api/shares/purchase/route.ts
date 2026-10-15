@@ -4,15 +4,12 @@ import AdminLog from "@/lib/models/AdminLog";
 import Order from "@/lib/models/Order";
 import Share from "@/lib/models/Share";
 import { connectDB } from "@/lib/mongodb";
+import { getSharePrice, MAX_PUBLIC_SHARES } from "@/lib/shares";
 
 const UPILERIFY_URL = process.env.UPILERIFY_URL || "http://localhost:3001";
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
 const UPI_ID = process.env.UPI_ID || "ayaan@okaxis";
 const UPI_PAYEE_NAME = process.env.UPI_PAYEE_NAME || "CrankShaft";
-
-const PRICE_PER_SHARE = 20; // ₹20 per share
-const _TOTAL_SHARES = 1000;
-const MAX_PUBLIC_SHARES = 400; // 40% of total = 400 shares
 
 export async function POST(req: Request) {
   try {
@@ -37,10 +34,11 @@ export async function POST(req: Request) {
     }
 
     await connectDB();
+    const pricePerShare = await getSharePrice();
 
-    // Check availability
+    // Check availability in Market pool (reserved pool is admin-only)
     const soldResult = await Share.aggregate([
-      { $match: { status: "PAID" } },
+      { $match: { status: "PAID", pool: { $ne: "reserved" } } },
       { $group: { _id: null, total: { $sum: "$numberOfShares" } } },
     ]);
     const totalSold = soldResult[0]?.total ?? 0;
@@ -49,13 +47,13 @@ export async function POST(req: Request) {
     if (parsedShares > available) {
       return NextResponse.json(
         {
-          error: `Only ${available} shares are available. Please reduce quantity.`,
+          error: `Only ${available} market shares are available. Please reduce quantity.`,
         },
         { status: 409 },
       );
     }
 
-    const totalPrice = parsedShares * PRICE_PER_SHARE;
+    const totalPrice = parsedShares * pricePerShare;
     const userId = session.userId;
     // If user doesn't enter a name for the shares, use their username
     const customName = typeof name === "string" ? name.trim() : "";
@@ -79,7 +77,9 @@ export async function POST(req: Request) {
       phone: phone || "",
       numberOfShares: parsedShares,
       totalPrice,
+      pricePerShare,
       orderId,
+      pool: "market",
       status: "PENDING",
     });
 
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
         {
           productId: "shares",
           name: `CrankShaft Profit Shares × ${parsedShares}`,
-          price: PRICE_PER_SHARE,
+          price: pricePerShare,
           quantity: parsedShares,
           imageUrl: "",
         },
@@ -104,6 +104,7 @@ export async function POST(req: Request) {
       metadata: {
         type: "shares",
         numberOfShares: parsedShares,
+        pricePerShare,
         username,
         userId,
       },
@@ -178,7 +179,7 @@ export async function POST(req: Request) {
       expectedAmount: order.expectedAmount,
       numberOfShares: parsedShares,
       totalPrice,
-      pricePerShare: PRICE_PER_SHARE,
+      pricePerShare,
       username,
     });
   } catch (err: any) {

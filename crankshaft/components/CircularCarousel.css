@@ -13,7 +13,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.circular-carousel[data-axis='x'] {
+.circular-carousel[data-axis="x"] {
   touch-action: pan-x;
 }
 
@@ -34,14 +34,38 @@
   inset: 0;
 }
 
-.circular-carousel[data-shape='wheel'] .circular-carousel__view {
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000000 18%, #000000 82%, transparent);
-  mask-image: linear-gradient(to bottom, transparent, #000000 18%, #000000 82%, transparent);
+.circular-carousel[data-shape="wheel"] .circular-carousel__view {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #000000 18%,
+    #000000 82%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #000000 18%,
+    #000000 82%,
+    transparent
+  );
 }
 
-.circular-carousel[data-shape='panorama'] .circular-carousel__view {
-  -webkit-mask-image: linear-gradient(to right, transparent, #000000 12%, #000000 88%, transparent);
-  mask-image: linear-gradient(to right, transparent, #000000 12%, #000000 88%, transparent);
+.circular-carousel[data-shape="panorama"] .circular-carousel__view {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000000 12%,
+    #000000 88%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000000 12%,
+    #000000 88%,
+    transparent
+  );
 }
 
 .circular-carousel__stage {

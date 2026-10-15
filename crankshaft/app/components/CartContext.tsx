@@ -18,55 +18,6 @@ export interface CartItem {
   category?: string;
 }
 
-export function calculateTwoFor300Deal(items: CartItem[]): {
-  discount: number;
-  hasDeal: boolean;
-  qualifyingPair: [CartItem, CartItem] | null;
-  qualifyingCategories: [string, string] | null;
-} {
-  // Expand individual units to check poster by poster
-  const units: { item: CartItem; category: string; price: number }[] = [];
-  for (const item of items) {
-    const cat = (item.category || "General").trim();
-    for (let i = 0; i < item.quantity; i++) {
-      units.push({ item, category: cat, price: Number(item.price) || 0 });
-    }
-  }
-
-  if (units.length < 2) {
-    return {
-      discount: 0,
-      hasDeal: false,
-      qualifyingPair: null,
-      qualifyingCategories: null,
-    };
-  }
-
-  // Find the first pair that has DIFFERENT categories
-  for (let i = 0; i < units.length; i++) {
-    for (let j = i + 1; j < units.length; j++) {
-      if (units[i].category.toLowerCase() !== units[j].category.toLowerCase()) {
-        const originalPairTotal = units[i].price + units[j].price;
-        // Two posters for 300 deal: pair becomes ₹300 total!
-        const discount = Math.max(0, originalPairTotal - 300);
-        return {
-          discount,
-          hasDeal: true,
-          qualifyingPair: [units[i].item, units[j].item],
-          qualifyingCategories: [units[i].category, units[j].category],
-        };
-      }
-    }
-  }
-
-  return {
-    discount: 0,
-    hasDeal: false,
-    qualifyingPair: null,
-    qualifyingCategories: null,
-  };
-}
-
 interface CartContextType {
   items: CartItem[];
   isOpen: boolean;
@@ -262,11 +213,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
     0,
   );
 
-  // Compute Two for 300 deal calculations
-  const dealResult = calculateTwoFor300Deal(items);
-  const comboDiscount = dealResult.discount;
-  const finalTotal = Math.max(0, subtotal - comboDiscount);
-  const hasDealApplied = dealResult.hasDeal && comboDiscount > 0;
+  const comboDiscount = 0;
+  const finalTotal = subtotal;
+  const hasDealApplied = false;
 
   return (
     <CartContext.Provider
@@ -285,8 +234,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
         comboDiscount,
         finalTotal,
         hasDealApplied,
-        dealPair: dealResult.qualifyingPair,
-        qualifyingCategories: dealResult.qualifyingCategories,
+        dealPair: null,
+        qualifyingCategories: null,
       }}
     >
       {children}

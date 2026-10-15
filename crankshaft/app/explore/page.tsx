@@ -34,8 +34,8 @@ export default async function ExplorePage() {
         aria-hidden
         className="
           pointer-events-none fixed inset-0
-          [background:radial-gradient(ellipse_80%_60%_at_50%_-10%,rgba(0,90,200,0.25)_0%,transparent_70%),
-                      radial-gradient(ellipse_70%_50%_at_50%_110%,rgba(0,180,255,0.15)_0%,transparent_65%)]
+          [background:radial-gradient(ellipse_80%_60%_at_50%_-10%,rgba(99,102,241,0.22)_0%,transparent_70%),
+                      radial-gradient(ellipse_70%_50%_at_50%_110%,rgba(139,92,246,0.12)_0%,transparent_65%)]
         "
       />
 
@@ -45,7 +45,7 @@ export default async function ExplorePage() {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
           <div>
-            <span className="text-xs font-mono font-semibold tracking-widest uppercase text-[#00d2ff]">
+            <span className="text-xs font-mono font-semibold tracking-widest uppercase text-indigo-400">
               CATALOG & ARTWORK
             </span>
             <h1 className="text-4xl sm:text-5xl font-black tracking-tight mt-2 text-white">

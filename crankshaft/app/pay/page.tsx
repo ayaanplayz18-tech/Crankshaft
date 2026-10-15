@@ -15,7 +15,7 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
-import { Suspense, useEffect, useState, useCallback } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 
 function PaymentContent() {

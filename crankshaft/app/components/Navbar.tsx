@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -42,13 +43,23 @@ export default function Navbar() {
           shadow-[0_4px_32px_rgba(0,0,0,0.5)]
         "
       >
-        {/* ── LEFT: Brand name ── */}
+        {/* ── LEFT: Brand logo & name ── */}
         <Link
           href="/"
           id="nav-logo"
-          className="text-white text-xl font-bold tracking-wide hover:opacity-80 transition-opacity duration-200 select-none"
+          className="flex items-center gap-2.5 text-white text-xl font-bold tracking-wide hover:opacity-85 transition-opacity duration-200 select-none group"
         >
-          CrankShaft
+          <div className="relative w-8 h-8 rounded-lg overflow-hidden shrink-0 flex items-center justify-center bg-black/40 border border-white/10 group-hover:border-[#00d2ff]/50 transition-colors">
+            <Image
+              src="/images/Crankshaft.png"
+              alt="CrankShaft Logo"
+              width={32}
+              height={32}
+              className="w-full h-full object-contain"
+              priority
+            />
+          </div>
+          <span>CrankShaft</span>
         </Link>
 
         {/* ── CENTER: nav links (desktop) ── */}

@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
 import { useCart } from "./CartContext";
@@ -33,11 +34,7 @@ export default function CartDrawer() {
     clearCart,
     totalCount,
     subtotal,
-    comboDiscount,
     finalTotal,
-    hasDealApplied,
-    dealPair,
-    qualifyingCategories,
   } = useCart();
 
   // UPIlerify payment state
@@ -260,7 +257,15 @@ export default function CartDrawer() {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-neutral-200 bg-white">
           <div className="flex items-center gap-2.5">
-            <ShoppingCart className="w-5 h-5 text-neutral-900" />
+            <div className="relative w-6 h-6 rounded-md overflow-hidden shrink-0 flex items-center justify-center bg-black/5 border border-neutral-200">
+              <Image
+                src="/images/Crankshaft.png"
+                alt="CrankShaft"
+                width={24}
+                height={24}
+                className="w-full h-full object-contain"
+              />
+            </div>
             <h2 className="text-lg font-bold text-neutral-900">Your Cart</h2>
             <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 font-semibold">
               {totalCount} {totalCount === 1 ? "item" : "items"}
@@ -280,10 +285,6 @@ export default function CartDrawer() {
         {/* Cart Item List */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4 divide-y divide-neutral-100">
           {items.map((item) => {
-            const isDealItem =
-              hasDealApplied &&
-              dealPair?.some((dp) => dp.id === item.id);
-
             return (
               <div
                 key={item.id}
@@ -312,16 +313,11 @@ export default function CartDrawer() {
                     {item.name}
                   </h3>
 
-                  {/* Category Pill and Deal Tag */}
+                  {/* Category Pill */}
                   <div className="flex flex-wrap items-center gap-1.5 mt-1">
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 border border-neutral-200">
                       {item.category || "General"}
                     </span>
-                    {isDealItem && (
-                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                        2 for ₹300 Pair
-                      </span>
-                    )}
                   </div>
 
                   <p className="text-xs font-mono font-semibold text-neutral-600 mt-1">
@@ -384,83 +380,23 @@ export default function CartDrawer() {
                 Explore our curated poster collection and add your favorite
                 artworks to your cart.
               </p>
-              <button
-                type="button"
+              <Link
+                href="/explore"
                 onClick={closeCart}
-                className="mt-6 px-5 py-2.5 rounded-full bg-black text-white text-xs font-bold hover:bg-neutral-800 transition-colors cursor-pointer"
+                className="mt-6 px-5 py-2.5 rounded-full bg-black text-white text-xs font-bold hover:bg-neutral-800 transition-colors cursor-pointer inline-block"
               >
                 Start Browsing
-              </button>
+              </Link>
             </div>
           )}
         </div>
 
-        {/* Footer with Totals, Deal Promotion, and SlideCommit Button */}
+        {/* Footer with Totals and SlideCommit Button */}
         {items.length > 0 && (
           <div className="p-6 border-t border-neutral-200 bg-neutral-50/70 space-y-4">
-            {/* Promo banner: Two for 300 deal status */}
-            {hasDealApplied ? (
-              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 space-y-1">
-                <div className="flex items-center justify-between font-bold">
-                  <span className="flex items-center gap-1.5">
-                    <span>🎉</span>
-                    <span>Two for ₹300 Deal Applied!</span>
-                  </span>
-                  <span className="font-mono text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-300">
-                    -₹{comboDiscount.toFixed(2)}
-                  </span>
-                </div>
-                <p className="text-[11px] text-emerald-700">
-                  Different categories bundle: {qualifyingCategories?.[0]} +{" "}
-                  {qualifyingCategories?.[1]} (1 pair offer)
-                </p>
-              </div>
-            ) : (
-              <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-950 flex items-center justify-between gap-2">
-                <div>
-                  <p className="font-bold flex items-center gap-1 text-blue-900">
-                    <span>💡</span>
-                    <span>Two for ₹300 Deal</span>
-                  </p>
-                  <p className="text-[11px] text-blue-700">
-                    {items.length === 1
-                      ? "Add 1 poster from a different category to unlock 2 for ₹300!"
-                      : "Select posters from 2 different categories to get ₹300 pricing!"}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={closeCart}
-                  className="shrink-0 text-[11px] font-bold text-blue-700 hover:text-blue-900 underline cursor-pointer"
-                >
-                  Browse
-                </button>
-              </div>
-            )}
-
             {/* Price breakdown */}
             <div className="space-y-1.5 pt-1">
-              <div className="flex items-center justify-between text-xs font-medium text-neutral-600">
-                <span>Original Subtotal</span>
-                <span
-                  className={`font-mono ${
-                    hasDealApplied
-                      ? "line-through text-neutral-400"
-                      : "text-neutral-900 font-bold"
-                  }`}
-                >
-                  ₹{subtotal.toFixed(2)}
-                </span>
-              </div>
-
-              {hasDealApplied && (
-                <div className="flex items-center justify-between text-xs font-bold text-emerald-600">
-                  <span>Category Pair Discount</span>
-                  <span className="font-mono">-₹{comboDiscount.toFixed(2)}</span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between text-base font-bold text-neutral-900 pt-1.5 border-t border-neutral-200">
+              <div className="flex items-center justify-between text-base font-bold text-neutral-900">
                 <span>Total to Pay</span>
                 <span className="font-mono text-xl text-neutral-950">
                   ₹{finalTotal.toFixed(2)}

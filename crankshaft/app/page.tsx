@@ -1,11 +1,14 @@
+import { ChevronDown } from "lucide-react";
 import type { Metadata } from "next";
 import { Press_Start_2P } from "next/font/google";
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronDown } from "lucide-react";
+import HomeInteractiveShowcase, {
+  type PosterItem,
+} from "@/components/HomeInteractiveShowcase";
 import DisplaySetting from "@/lib/models/DisplaySetting";
+import Product from "@/lib/models/Product";
 import { connectDB } from "@/lib/mongodb";
-import HomeCarouselDealSection from "@/components/HomeCarouselDealSection";
 import Navbar from "./components/Navbar";
 
 const pixelFont = Press_Start_2P({
@@ -37,13 +40,27 @@ async function getActivePoster(): Promise<{ url: string; name: string }> {
     console.error("[HOME_POSTER_FETCH]", err);
   }
   return {
-    url: "/poster-ex.png",
+    url: "/images/Crankshaft.png",
     name: "CrankShaft poster",
   };
 }
 
+async function getProducts(): Promise<PosterItem[]> {
+  try {
+    await connectDB();
+    const products = await Product.find({}).sort({ createdAt: -1 }).lean();
+    return JSON.parse(JSON.stringify(products));
+  } catch (err) {
+    console.error("[HOME_PRODUCTS_FETCH]", err);
+    return [];
+  }
+}
+
 export default async function HomePage() {
-  const poster = await getActivePoster();
+  const [poster, products] = await Promise.all([
+    getActivePoster(),
+    getProducts(),
+  ]);
 
   return (
     <main className="relative min-h-screen overflow-x-hidden bg-[#030714] text-white">
@@ -165,20 +182,20 @@ export default async function HomePage() {
           </div>
         </div>
 
-        {/* ── Scroll cue down to Carousel & Deals ── */}
+        {/* ── Scroll cue down to Poster Search & 3D Cart ── */}
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1.5 opacity-80 hover:opacity-100 transition-opacity">
           <a
-            href="#carousel-deals"
+            href="#poster-search"
             className="flex flex-col items-center gap-1 text-[11px] font-mono tracking-widest uppercase text-neutral-400 hover:text-white"
           >
-            <span>Scroll For 3D Carousel & Deals</span>
+            <span>Scroll For Poster</span>
             <ChevronDown className="w-4 h-4 animate-bounce text-[#00d2ff]" />
           </a>
         </div>
       </section>
 
-      {/* ── 3D Circular Carousel & Two for 300 Deal Section ── */}
-      <HomeCarouselDealSection />
+      {/* ── Interactive Poster Selection & 3D Cart Carousel ── */}
+      <HomeInteractiveShowcase initialProducts={products} />
     </main>
   );
 }

@@ -8,7 +8,9 @@ import {
   ChevronUp,
   Coins,
   Copy,
+  Info,
   Loader2,
+  Lock,
   LogOut,
   Package,
   Pencil,
@@ -89,6 +91,7 @@ interface OrderItem {
   upiIntentUri?: string;
   status: "PENDING" | "PAID" | "FAILED";
   utr?: string;
+  metadata?: any;
   paidAt?: string;
   createdAt: string;
 }
@@ -106,6 +109,7 @@ interface StakeholderRecord {
   orderId: string;
   numberOfShares: number;
   totalPrice: number;
+  pool?: "market" | "reserved";
   utr?: string;
   paidAt?: string;
   createdAt: string;
@@ -115,8 +119,12 @@ interface StakeholderItem {
   username: string;
   userId: string;
   totalShares: number;
+  marketShares?: number;
+  reservedShares?: number;
+  poolLabel?: "Market" | "Founders/Reserved" | "Mixed";
   stakePercent: number;
   totalInvested: number;
+  currentMarketValue?: number;
   ordersCount: number;
   firstGranted: string;
   lastGranted: string;
@@ -125,7 +133,8 @@ interface StakeholderItem {
 
 interface ShareStats {
   totalShares: number;
-  reservedShares: number;
+  totalCapital?: number;
+  reservedShares?: number;
   maxPublicShares: number;
   soldShares: number;
   availableShares: number;
@@ -134,6 +143,33 @@ interface ShareStats {
   availablePercent: number;
   stakeholderCount: number;
   totalRevenue: number;
+  pricePerShare?: number;
+  isMarketValueDerived?: boolean;
+  marketValueFormula?: string;
+  dividendPool?: number;
+  dividendPerShare?: number;
+  dividendYieldPercent?: number;
+  reasonForChange?: string;
+  changeHistory?: Array<{
+    previousCapital: number;
+    newCapital: number;
+    previousMarketValue: number;
+    newMarketValue: number;
+    reason: string;
+    updatedBy: string;
+    timestamp: string | Date;
+  }>;
+  totalCompanyValuation?: number;
+  publicPoolValuation?: number;
+  soldPoolValuation?: number;
+  marketAllocated?: number;
+  marketRemaining?: number;
+  reservedTotal?: number;
+  reservedAllocated?: number;
+  reservedRemaining?: number;
+  totalAllocated?: number;
+  totalRemaining?: number;
+  reservedPoolValuation?: number;
 }
 
 export default function AdminDashboardPage() {
@@ -185,9 +221,19 @@ export default function AdminDashboardPage() {
   const [modalAddSharesOpen, setModalAddSharesOpen] = useState(false);
   const [addShareUsername, setAddShareUsername] = useState("");
   const [addShareCount, setAddShareCount] = useState<number | string>(10);
+  const [addSharePool, setAddSharePool] = useState<"market" | "reserved">(
+    "market",
+  );
   const [addShareNotes, setAddShareNotes] = useState("");
   const [submittingShare, setSubmittingShare] = useState(false);
   const [shareGrantError, setShareGrantError] = useState("");
+
+  // Capital & Financial valuation modification state
+  const [modalCapitalOpen, setModalCapitalOpen] = useState(false);
+  const [capitalInput, setCapitalInput] = useState<number | string>(20000);
+  const [capitalReason, setCapitalReason] = useState("");
+  const [updatingCapital, setUpdatingCapital] = useState(false);
+  const [capitalError, setCapitalError] = useState("");
 
   // Notifications
   const [toast, setToast] = useState<{
@@ -309,32 +355,12 @@ export default function AdminDashboardPage() {
       if (!res.ok) return;
       const data = await res.json();
       if (data.logs) {
-        const ghostHandle =
-          currentUser?.role === "ghost"
-            ? currentUser.username.toLowerCase()
-            : "";
-        setLogs(
-          (data.logs as LogItem[]).filter((l) => {
-            const adminLower = (l.adminName || "").toLowerCase();
-            const cmdLower = (l.command || "").toLowerCase();
-            if (
-              adminLower === "ayaan_admin" ||
-              cmdLower.includes("ayaan_admin")
-            )
-              return false;
-            if (
-              ghostHandle &&
-              (adminLower === ghostHandle || cmdLower.includes(ghostHandle))
-            )
-              return false;
-            return true;
-          }),
-        );
+        setLogs(data.logs as LogItem[]);
       }
     } catch {
       // Ignore network aborts or dev-server reload glitches
     }
-  }, [currentUser]);
+  }, []);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -427,6 +453,7 @@ export default function AdminDashboardPage() {
           username: addShareUsername.trim(),
           shares: count,
           notes: addShareNotes.trim(),
+          pool: addSharePool,
         }),
       });
       const data = await res.json();
@@ -441,6 +468,7 @@ export default function AdminDashboardPage() {
       setModalAddSharesOpen(false);
       setAddShareUsername("");
       setAddShareCount(10);
+      setAddSharePool("market");
       setAddShareNotes("");
       await loadShares();
       loadLogs();
@@ -479,6 +507,59 @@ export default function AdminDashboardPage() {
       loadOrders();
     } catch (err: any) {
       showToast(err.message || "Failed to revoke share", "error");
+    }
+  };
+
+  const handleUpdateCapital = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsedCapital = parseFloat(String(capitalInput));
+    if (
+      Number.isNaN(parsedCapital) ||
+      parsedCapital <= 0 ||
+      !Number.isFinite(parsedCapital)
+    ) {
+      setCapitalError("Please enter a valid positive company capital amount.");
+      return;
+    }
+
+    if (!capitalReason.trim() || capitalReason.trim().length < 3) {
+      setCapitalError(
+        "A mandatory reason for changing company capital is required for financial auditing.",
+      );
+      return;
+    }
+
+    setUpdatingCapital(true);
+    setCapitalError("");
+
+    try {
+      const res = await fetch("/api/admin/shares", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          totalCapital: parsedCapital,
+          reason: capitalReason.trim(),
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setCapitalError(data.error || "Failed to update company capital.");
+        return;
+      }
+
+      showToast(
+        data.message ||
+          `Company capital updated to ₹${parsedCapital.toLocaleString()}`,
+      );
+      setModalCapitalOpen(false);
+      setCapitalReason("");
+      await loadShares();
+      loadLogs();
+    } catch (err: any) {
+      setCapitalError(err.message || "Network error updating company capital.");
+    } finally {
+      setUpdatingCapital(false);
     }
   };
 
@@ -791,6 +872,15 @@ export default function AdminDashboardPage() {
                 href="/"
                 className="text-lg font-bold tracking-tight text-white flex items-center gap-2"
               >
+                <div className="relative w-6 h-6 rounded overflow-hidden shrink-0 flex items-center justify-center bg-black/40 border border-white/10">
+                  <Image
+                    src="/images/Crankshaft.png"
+                    alt="CrankShaft"
+                    width={24}
+                    height={24}
+                    className="w-full h-full object-contain"
+                  />
+                </div>
                 <span>CrankShaft</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-neutral-300 font-mono">
                   ADMIN
@@ -957,7 +1047,9 @@ export default function AdminDashboardPage() {
                                 />
                               ) : (
                                 <div className="w-7 h-7 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-xs text-white">
-                                  {(u.username || "U").slice(0, 2).toUpperCase()}
+                                  {(u.username || "U")
+                                    .slice(0, 2)
+                                    .toUpperCase()}
                                 </div>
                               )}
                               <div className="flex flex-col">
@@ -1489,24 +1581,37 @@ export default function AdminDashboardPage() {
                 Showing{" "}
                 <strong className="text-white">
                   {
-                    orders.filter((o) => {
-                      const q = orderSearchQuery.toLowerCase();
-                      return (
-                        !q ||
-                        o.orderId.toLowerCase().includes(q) ||
-                        o.utr?.toLowerCase().includes(q) ||
-                        o.userId?.toLowerCase().includes(q)
-                      );
-                    }).length
+                    orders
+                      .filter(
+                        (o) =>
+                          o.metadata?.type !== "shares" &&
+                          !o.items?.some(
+                            (it: any) => it.productId === "shares",
+                          ),
+                      )
+                      .filter((o) => {
+                        const q = orderSearchQuery.toLowerCase();
+                        return (
+                          !q ||
+                          o.orderId.toLowerCase().includes(q) ||
+                          o.utr?.toLowerCase().includes(q) ||
+                          o.userId?.toLowerCase().includes(q)
+                        );
+                      }).length
                   }
                 </strong>{" "}
-                paid orders
+                merchandise orders
               </div>
             </div>
 
             {/* Orders List */}
             <div className="space-y-4">
               {orders
+                .filter(
+                  (o) =>
+                    o.metadata?.type !== "shares" &&
+                    !o.items?.some((it: any) => it.productId === "shares"),
+                )
                 .filter((o) => {
                   const q = orderSearchQuery.toLowerCase();
                   return (
@@ -1713,7 +1818,7 @@ export default function AdminDashboardPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
                 <button
                   type="button"
                   onClick={loadShares}
@@ -1723,6 +1828,32 @@ export default function AdminDashboardPage() {
                   <RefreshCw
                     className={`w-4 h-4 ${sharesLoading ? "animate-spin" : ""}`}
                   />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCapitalInput(
+                      shareStats?.totalCapital ??
+                        (shareStats?.pricePerShare
+                          ? shareStats.pricePerShare * 1000
+                          : 20000),
+                    );
+                    setCapitalReason("");
+                    setCapitalError("");
+                    setModalCapitalOpen(true);
+                  }}
+                  className="px-3.5 py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-emerald-500/40 hover:border-emerald-500/70 text-emerald-300 text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                  title="Adjust Company Capital"
+                >
+                  <Coins className="w-4 h-4 text-emerald-400" />
+                  <span>
+                    Capital: ₹
+                    {(shareStats?.totalCapital ?? 20000).toLocaleString()}
+                  </span>
+                  <span className="text-[10px] text-neutral-400 font-mono">
+                    (Mkt: ₹{shareStats?.pricePerShare ?? 20}/sh)
+                  </span>
+                  <Pencil className="w-3 h-3 text-emerald-400/80" />
                 </button>
                 <button
                   type="button"
@@ -1742,8 +1873,48 @@ export default function AdminDashboardPage() {
             </div>
 
             {/* KPI Metric Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-              {/* Card 1: Stakeholders Count */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
+              {/* Card 1: Company Capital & Derived Market Value */}
+              <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800 space-y-1.5 relative overflow-hidden group hover:border-emerald-500/40 transition-colors">
+                <div className="flex items-center justify-between text-neutral-400 text-xs">
+                  <span className="font-semibold text-white">
+                    Company Capital
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCapitalInput(
+                        shareStats?.totalCapital ??
+                          (shareStats?.pricePerShare
+                            ? shareStats.pricePerShare * 1000
+                            : 20000),
+                      );
+                      setCapitalReason("");
+                      setCapitalError("");
+                      setModalCapitalOpen(true);
+                    }}
+                    className="flex items-center gap-1 text-[11px] font-mono text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer"
+                    title="Adjust Capital"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    <span>Adjust</span>
+                  </button>
+                </div>
+                <div className="text-2xl font-black text-emerald-400 font-mono">
+                  ₹{(shareStats?.totalCapital ?? 20000).toLocaleString()}
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-neutral-400 font-mono pt-1 border-t border-neutral-800/60">
+                  <span className="flex items-center gap-1 text-cyan-400">
+                    <Lock className="w-3 h-3 text-cyan-400/80" />
+                    <span>Mkt: ₹{shareStats?.pricePerShare ?? 20}/sh</span>
+                  </span>
+                  <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-950/60 text-cyan-400 border border-cyan-800/60">
+                    Derived
+                  </span>
+                </div>
+              </div>
+
+              {/* Card 2: Stakeholders Count */}
               <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800 space-y-1.5">
                 <div className="flex items-center justify-between text-neutral-400 text-xs">
                   <span>Stakeholders</span>
@@ -1757,74 +1928,94 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
 
-              {/* Card 2: Public Shares Sold */}
+              {/* Card 3: Market Shares Sold */}
               <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800 space-y-1.5">
                 <div className="flex items-center justify-between text-neutral-400 text-xs">
-                  <span>Public Pool Sold</span>
-                  <PieChart className="w-4 h-4 text-emerald-400" />
+                  <span>Market Pool</span>
+                  <PieChart className="w-4 h-4 text-indigo-400" />
                 </div>
                 <div className="text-2xl font-black text-white font-mono">
-                  {shareStats?.soldShares ?? 0}{" "}
+                  {shareStats?.marketAllocated ?? shareStats?.soldShares ?? 0}{" "}
                   <span className="text-xs text-neutral-500 font-normal">
-                    / {shareStats?.maxPublicShares ?? 400}
+                    / 400
                   </span>
                 </div>
                 <div className="w-full bg-neutral-800 h-1.5 rounded-full overflow-hidden">
                   <div
-                    className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                    className="bg-indigo-500 h-full rounded-full transition-all duration-500"
                     style={{
-                      width: `${Math.min(100, ((shareStats?.soldShares ?? 0) / (shareStats?.maxPublicShares ?? 400)) * 100)}%`,
+                      width: `${Math.min(100, ((shareStats?.marketAllocated ?? shareStats?.soldShares ?? 0) / 400) * 100)}%`,
                     }}
                   />
                 </div>
+                <div className="text-[10px] text-indigo-400 font-mono">
+                  {shareStats?.marketRemaining ??
+                    shareStats?.availableShares ??
+                    400}{" "}
+                  market shares open
+                </div>
+              </div>
+
+              {/* Card 4: Founders / Reserved Shares Allocated */}
+              <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800 space-y-1.5">
+                <div className="flex items-center justify-between text-neutral-400 text-xs">
+                  <span>Founders Pool</span>
+                  <ShieldCheck className="w-4 h-4 text-purple-400" />
+                </div>
+                <div className="text-2xl font-black text-white font-mono">
+                  {shareStats?.reservedAllocated ?? 0}{" "}
+                  <span className="text-xs text-neutral-500 font-normal">
+                    / 600
+                  </span>
+                </div>
+                <div className="w-full bg-neutral-800 h-1.5 rounded-full overflow-hidden">
+                  <div
+                    className="bg-purple-500 h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${Math.min(100, ((shareStats?.reservedAllocated ?? 0) / 600) * 100)}%`,
+                    }}
+                  />
+                </div>
+                <div className="text-[10px] text-purple-400 font-mono">
+                  {shareStats?.reservedRemaining ?? 600} reserved shares open
+                </div>
+              </div>
+
+              {/* Card 5: Total Equity Distributed */}
+              <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800 space-y-1.5">
+                <div className="flex items-center justify-between text-neutral-400 text-xs">
+                  <span>Total Allocated</span>
+                  <Coins className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div className="text-2xl font-black text-emerald-300 font-mono">
+                  {shareStats?.totalAllocated ?? shareStats?.soldShares ?? 0}{" "}
+                  <span className="text-xs text-neutral-500 font-normal">
+                    / 1,000
+                  </span>
+                </div>
                 <div className="text-[10px] text-emerald-400 font-mono">
-                  {((shareStats?.soldShares ?? 0) / 10).toFixed(1)}% of company
-                  equity sold
+                  {(
+                    ((shareStats?.totalAllocated ??
+                      shareStats?.soldShares ??
+                      0) /
+                      1000) *
+                    100
+                  ).toFixed(1)}
+                  % total company equity
                 </div>
               </div>
 
-              {/* Card 3: Available Public Shares */}
+              {/* Card 6: Total Stake Capital */}
               <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800 space-y-1.5">
                 <div className="flex items-center justify-between text-neutral-400 text-xs">
-                  <span>Still Available</span>
-                  <Coins className="w-4 h-4 text-indigo-400" />
-                </div>
-                <div className="text-2xl font-black text-indigo-300 font-mono">
-                  {shareStats?.availableShares ?? 400}
-                </div>
-                <div className="text-[10px] text-neutral-400 font-mono">
-                  {shareStats?.availablePercent ?? 40}% public equity open
-                </div>
-              </div>
-
-              {/* Card 4: Total Stake Capital */}
-              <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800 space-y-1.5">
-                <div className="flex items-center justify-between text-neutral-400 text-xs">
-                  <span>Pool Capital</span>
+                  <span>Capital Value</span>
                   <Receipt className="w-4 h-4 text-amber-400" />
                 </div>
                 <div className="text-2xl font-black text-white font-mono">
                   ₹{(shareStats?.totalRevenue ?? 0).toLocaleString()}
                 </div>
-                <div className="text-[10px] text-neutral-500">
-                  At ₹20 per share price
-                </div>
-              </div>
-
-              {/* Card 5: Reserved Pool */}
-              <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800 space-y-1.5">
-                <div className="flex items-center justify-between text-neutral-400 text-xs">
-                  <span>Founder Pool</span>
-                  <ShieldCheck className="w-4 h-4 text-slate-400" />
-                </div>
-                <div className="text-2xl font-black text-slate-300 font-mono">
-                  600{" "}
-                  <span className="text-xs text-neutral-500 font-normal">
-                    (60.0%)
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-500">
-                  Treasury & core team
+                <div className="text-[10px] text-neutral-500 font-mono">
+                  Total collected investments
                 </div>
               </div>
             </div>
@@ -1939,6 +2130,20 @@ export default function AdminDashboardPage() {
                                       ALLOCATED
                                     </span>
                                   )}
+                                  {stakeholder.poolLabel ===
+                                  "Founders/Reserved" ? (
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 font-mono">
+                                      Founders Pool
+                                    </span>
+                                  ) : stakeholder.poolLabel === "Mixed" ? (
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 font-mono">
+                                      Mixed Pools
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 font-mono">
+                                      Market Pool
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="text-[11px] text-neutral-500 font-mono mt-0.5">
                                   {stakeholder.ordersCount} allocation
@@ -1979,13 +2184,21 @@ export default function AdminDashboardPage() {
                                 </div>
                               </div>
 
-                              {/* Capital Invested */}
+                              {/* Current Market Value & Capital Invested */}
                               <div>
                                 <div className="text-[10px] text-neutral-500 font-mono uppercase">
-                                  Capital Value
+                                  Current Value
                                 </div>
-                                <div className="text-sm font-bold text-neutral-200 font-mono mt-0.5">
-                                  ₹{stakeholder.totalInvested.toLocaleString()}
+                                <div className="text-sm font-black text-emerald-400 font-mono mt-0.5">
+                                  ₹
+                                  {(
+                                    stakeholder.totalShares *
+                                    (shareStats?.pricePerShare ?? 20)
+                                  ).toLocaleString()}
+                                </div>
+                                <div className="text-[10px] text-neutral-500 font-mono">
+                                  Cost: ₹
+                                  {stakeholder.totalInvested.toLocaleString()}
                                 </div>
                               </div>
                             </div>
@@ -2058,6 +2271,17 @@ export default function AdminDashboardPage() {
                                             1,
                                           )}
                                           % stake)
+                                        </span>
+                                        <span
+                                          className={`px-1.5 py-0.2 rounded text-[10px] font-mono font-semibold border ${
+                                            record.pool === "reserved"
+                                              ? "bg-purple-500/15 border-purple-500/30 text-purple-300"
+                                              : "bg-indigo-500/15 border-indigo-500/30 text-indigo-300"
+                                          }`}
+                                        >
+                                          {record.pool === "reserved"
+                                            ? "Founders/Reserved"
+                                            : "Market"}
                                         </span>
                                         <span className="text-neutral-500 font-mono">
                                           ·
@@ -2554,6 +2778,52 @@ export default function AdminDashboardPage() {
                 )}
               </div>
 
+              {/* Pool Selection Toggle Button (Decide Founders/Reserved vs Market) */}
+              <div>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1.5">
+                  Account Shares In Which Pool?
+                </label>
+                <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-neutral-900 border border-neutral-800">
+                  <button
+                    type="button"
+                    onClick={() => setAddSharePool("market")}
+                    className={`flex flex-col items-center justify-center py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      addSharePool === "market"
+                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+                        : "text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    <span className="font-bold">Market Pool</span>
+                    <span className="text-[10px] font-mono opacity-80 mt-0.5">
+                      {shareStats?.marketRemaining ??
+                        shareStats?.availableShares ??
+                        400}{" "}
+                      / 400 avail
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAddSharePool("reserved")}
+                    className={`flex flex-col items-center justify-center py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      addSharePool === "reserved"
+                        ? "bg-purple-600 text-white shadow-md shadow-purple-600/30"
+                        : "text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    <span className="font-bold">Founders / Reserved</span>
+                    <span className="text-[10px] font-mono opacity-80 mt-0.5">
+                      {shareStats?.reservedRemaining ?? 600} / 600 avail
+                    </span>
+                  </button>
+                </div>
+                <p className="text-[10px] font-mono text-neutral-500 mt-1">
+                  {addSharePool === "reserved"
+                    ? "★ Drawing from 600 reserved founder shares (Admin Manual Input Only)."
+                    : "• Drawing from 400 public market shares."}
+                </p>
+              </div>
+
               {/* Number of Shares */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
@@ -2561,13 +2831,26 @@ export default function AdminDashboardPage() {
                     Number of Shares
                   </label>
                   <span className="text-[11px] text-neutral-500 font-mono">
-                    Max: {shareStats?.availableShares ?? 400} available
+                    Max:{" "}
+                    {addSharePool === "reserved"
+                      ? (shareStats?.reservedRemaining ?? 600)
+                      : (shareStats?.marketRemaining ??
+                        shareStats?.availableShares ??
+                        400)}{" "}
+                    available in{" "}
+                    {addSharePool === "reserved" ? "Reserve" : "Market"}
                   </span>
                 </div>
                 <input
                   type="number"
                   min="1"
-                  max={shareStats?.availableShares ?? 400}
+                  max={
+                    addSharePool === "reserved"
+                      ? (shareStats?.reservedRemaining ?? 600)
+                      : (shareStats?.marketRemaining ??
+                        shareStats?.availableShares ??
+                        400)
+                  }
                   required
                   value={addShareCount}
                   onChange={(e) => setAddShareCount(e.target.value)}
@@ -2582,23 +2865,29 @@ export default function AdminDashboardPage() {
                     { count: 20, label: "+20 (2.0%)" },
                     { count: 50, label: "+50 (5.0%)" },
                     { count: 100, label: "+100 (10%)" },
-                  ].map((preset) => (
-                    <button
-                      key={preset.count}
-                      type="button"
-                      onClick={() => setAddShareCount(preset.count)}
-                      disabled={
-                        preset.count > (shareStats?.availableShares ?? 400)
-                      }
-                      className={`text-[10px] px-2.5 py-1 rounded-lg font-mono font-semibold transition-colors border disabled:opacity-30 ${
-                        Number(addShareCount) === preset.count
-                          ? "bg-indigo-600 text-white border-indigo-500"
-                          : "bg-neutral-900 text-neutral-400 hover:text-white border-neutral-800"
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
+                  ].map((preset) => {
+                    const currentPoolMax =
+                      addSharePool === "reserved"
+                        ? (shareStats?.reservedRemaining ?? 600)
+                        : (shareStats?.marketRemaining ??
+                          shareStats?.availableShares ??
+                          400);
+                    return (
+                      <button
+                        key={preset.count}
+                        type="button"
+                        onClick={() => setAddShareCount(preset.count)}
+                        disabled={preset.count > currentPoolMax}
+                        className={`text-[10px] px-2.5 py-1 rounded-lg font-mono font-semibold transition-colors border disabled:opacity-30 ${
+                          Number(addShareCount) === preset.count
+                            ? "bg-indigo-600 text-white border-indigo-500"
+                            : "bg-neutral-900 text-neutral-400 hover:text-white border-neutral-800"
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -2616,15 +2905,23 @@ export default function AdminDashboardPage() {
                   <span className="font-mono font-bold text-white">
                     ₹
                     {(
-                      Math.max(0, Number(addShareCount) || 0) * 20
+                      Math.max(0, Number(addShareCount) || 0) *
+                      (shareStats?.pricePerShare ?? 20)
                     ).toLocaleString()}
                   </span>
                 </div>
                 <div className="flex justify-between text-[11px] text-neutral-400 pt-1 border-t border-indigo-500/20">
-                  <span>Public Pool Capacity:</span>
+                  <span>
+                    {addSharePool === "reserved"
+                      ? "Founders/Reserved Pool Capacity:"
+                      : "Market Pool Capacity:"}
+                  </span>
                   <span className="font-mono">
-                    {(shareStats?.availableShares ?? 400) -
-                      (Number(addShareCount) || 0)}{" "}
+                    {(addSharePool === "reserved"
+                      ? (shareStats?.reservedRemaining ?? 600)
+                      : (shareStats?.marketRemaining ??
+                        shareStats?.availableShares ??
+                        400)) - (Number(addShareCount) || 0)}{" "}
                     shares remaining
                   </span>
                 </div>
@@ -2672,6 +2969,286 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── ADJUST COMPANY CAPITAL MODAL (FINANCIAL GOVERNANCE) ───────── */}
+      {modalCapitalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="relative w-full max-w-lg rounded-2xl bg-neutral-950 border border-neutral-800 shadow-2xl p-6 sm:p-7 space-y-5 text-white max-h-[92vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-neutral-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                  <Coins className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">
+                    Adjust Company Capital
+                  </h3>
+                  <p className="text-xs text-neutral-400">
+                    Recalibrate company valuation and derived market value per
+                    share
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalCapitalOpen(false)}
+                className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-900 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Error banner */}
+            {capitalError && (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center gap-2 text-xs text-red-400">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{capitalError}</span>
+              </div>
+            )}
+
+            {/* Current Metrics Banner */}
+            <div className="p-4 rounded-xl bg-neutral-900/80 border border-neutral-800 grid grid-cols-2 gap-4">
+              <div>
+                <span className="text-[10px] text-neutral-500 font-mono uppercase tracking-wider block">
+                  Active Capital
+                </span>
+                <span className="text-xl font-black text-emerald-400 font-mono">
+                  ₹{(shareStats?.totalCapital ?? 20000).toLocaleString()}
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] text-neutral-500 font-mono uppercase tracking-wider block">
+                  Derived Market Value
+                </span>
+                <div className="flex items-center justify-end gap-1.5 text-lg font-black text-white font-mono">
+                  <Lock className="w-3.5 h-3.5 text-neutral-400" />
+                  <span>₹{shareStats?.pricePerShare ?? 20}</span>
+                  <span className="text-xs text-neutral-500 font-normal">
+                    / sh
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleUpdateCapital} className="space-y-4">
+              {/* Field 1: Capital Input (Editable) */}
+              <div>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1.5">
+                  New Company Capital (₹ INR) *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 font-mono font-bold text-sm">
+                    ₹
+                  </span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="any"
+                    required
+                    value={capitalInput}
+                    onChange={(e) => setCapitalInput(e.target.value)}
+                    placeholder="e.g. 25000"
+                    className="w-full pl-8 pr-4 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-base text-white focus:border-emerald-500 outline-none font-mono font-bold"
+                  />
+                </div>
+
+                {/* Quick Presets */}
+                <div className="mt-2.5 space-y-1">
+                  <span className="text-[10px] text-neutral-500 font-mono block">
+                    Capital Valuation Presets:
+                  </span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {[20000, 30000, 50000, 100000, 250000, 500000].map(
+                      (preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setCapitalInput(preset)}
+                          className={`text-[10px] px-2.5 py-1 rounded-lg font-mono font-semibold transition-colors border cursor-pointer ${
+                            Number(capitalInput) === preset
+                              ? "bg-emerald-600 text-white border-emerald-500"
+                              : "bg-neutral-900 text-neutral-400 hover:text-white border-neutral-800"
+                          }`}
+                        >
+                          ₹{(preset / 1000).toFixed(0)}k (₹
+                          {(preset / 1000).toFixed(0)}/sh)
+                        </button>
+                      ),
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Field 2: Derived Market Value (STRICTLY READ-ONLY / NON-UPDATEABLE) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-neutral-400 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Derived Market Value per Share (Non-Updateable)</span>
+                  </label>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800/80">
+                    Locked • Auto-Derived
+                  </span>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500 font-mono font-bold text-sm">
+                    ₹
+                  </span>
+                  <input
+                    type="text"
+                    disabled
+                    readOnly
+                    value={`${((parseFloat(String(capitalInput)) || 0) / 1000).toFixed(2)} per share`}
+                    className="w-full pl-8 pr-4 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-sm text-cyan-400 font-mono font-bold cursor-not-allowed select-none opacity-90 shadow-inner"
+                  />
+                </div>
+              </div>
+
+              {/* Field 4: Mandatory Reason for Capital Change */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-white flex items-center gap-1">
+                    <span>Reason for Capital Change</span>
+                    <span className="text-red-400 font-bold">*</span>
+                  </label>
+                  <span className="text-[10px] font-mono text-amber-400 bg-amber-950/60 border border-amber-800/60 px-2 py-0.5 rounded">
+                    Mandatory
+                  </span>
+                </div>
+                <textarea
+                  rows={2}
+                  required
+                  value={capitalReason}
+                  onChange={(e) => setCapitalReason(e.target.value)}
+                  placeholder="e.g. Seed equity injection, Q3 valuation update, new inventory asset capitalization, shareholder expansion..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-xs text-white placeholder-neutral-500 focus:border-emerald-500 outline-none font-mono resize-none shadow-inner"
+                />
+                <p className="text-[10px] text-neutral-400 mt-0.5">
+                  Always required for audit logs and regulatory transparency.
+                </p>
+              </div>
+
+              {/* Live Projected Valuation Impact */}
+              <div className="p-3.5 rounded-xl bg-emerald-500/[0.08] border border-emerald-500/20 space-y-1.5 font-mono text-xs">
+                <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
+                  Live Valuation Recalibration
+                </div>
+                <div className="flex justify-between text-neutral-300 text-[11px]">
+                  <span>1 Share Value (Derived):</span>
+                  <span className="font-bold text-white">
+                    ₹
+                    {((parseFloat(String(capitalInput)) || 0) / 1000).toFixed(
+                      2,
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between text-neutral-300 text-[11px]">
+                  <span>10 Shares (1% Company Stake):</span>
+                  <span className="font-bold text-white">
+                    ₹
+                    {(
+                      ((parseFloat(String(capitalInput)) || 0) / 1000) *
+                      10
+                    ).toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex justify-between text-neutral-300 text-[11px]">
+                  <span>Public Pool (400 Shares / 40%):</span>
+                  <span className="font-bold text-indigo-300">
+                    ₹
+                    {(
+                      ((parseFloat(String(capitalInput)) || 0) / 1000) *
+                      400
+                    ).toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex justify-between text-neutral-200 pt-1.5 border-t border-emerald-500/20 font-bold text-xs">
+                  <span>Total Capital Valuation:</span>
+                  <span className="text-emerald-400">
+                    ₹{(parseFloat(String(capitalInput)) || 0).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setModalCapitalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl border border-neutral-800 text-neutral-300 hover:bg-neutral-900 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    updatingCapital ||
+                    !capitalInput ||
+                    Number(capitalInput) <= 0 ||
+                    !capitalReason.trim()
+                  }
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-500 transition-colors flex items-center gap-2 disabled:opacity-50 cursor-pointer shadow-lg shadow-emerald-900/40"
+                >
+                  {updatingCapital ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Applying Capital & Derived Value...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Save Company Capital</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+
+            {/* Audit Change History */}
+            {shareStats?.changeHistory &&
+              shareStats.changeHistory.length > 0 && (
+                <div className="pt-3 border-t border-neutral-850">
+                  <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-wider block mb-2">
+                    Recent Capital Audit Trail (
+                    {shareStats.changeHistory.length})
+                  </span>
+                  <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                    {shareStats.changeHistory
+                      .slice()
+                      .reverse()
+                      .slice(0, 5)
+                      .map((item, idx) => (
+                        <div
+                          key={idx}
+                          className="p-2.5 rounded-lg bg-black/40 border border-neutral-850 text-[11px] font-mono space-y-1"
+                        >
+                          <div className="flex items-center justify-between text-neutral-400">
+                            <span className="text-emerald-400 font-bold">
+                              ₹{item.previousCapital.toLocaleString()} → ₹
+                              {item.newCapital.toLocaleString()}
+                            </span>
+                            <span className="text-[10px] text-neutral-500">
+                              {new Date(item.timestamp).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <div className="text-neutral-300 text-[10px]">
+                            <strong>Reason:</strong> {item.reason}
+                          </div>
+                          <div className="text-[9px] text-neutral-500">
+                            By @{item.updatedBy} • Mkt Val: ₹
+                            {item.previousMarketValue} → ₹{item.newMarketValue}
+                            /sh
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
           </div>
         </div>
       )}
