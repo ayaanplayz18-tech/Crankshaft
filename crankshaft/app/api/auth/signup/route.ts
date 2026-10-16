@@ -4,62 +4,69 @@ import { signToken } from "@/lib/auth";
 import User from "@/lib/models/User";
 import { connectDB } from "@/lib/mongodb";
 
+import {
+  validateIndianPhone,
+  validatePassword,
+  validateUsername,
+} from "@/lib/validation";
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { username, password, phone } = body;
 
     // ── Input validation ──
-    if (!username || !password || !phone) {
+    const usernameValidation = validateUsername(username);
+    if (!usernameValidation.isValid) {
       return NextResponse.json(
-        { error: "Username, password, and phone number are required." },
+        { error: usernameValidation.error },
+        { status: 400 },
+      );
+    }
+
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      return NextResponse.json(
+        { error: passwordValidation.error },
+        { status: 400 },
+      );
+    }
+
+    const phoneValidation = validateIndianPhone(phone);
+    if (!phoneValidation.isValid) {
+      return NextResponse.json(
+        { error: phoneValidation.error },
         { status: 400 },
       );
     }
 
     const trimmedUsername = username.trim();
-    if (trimmedUsername.length < 3) {
-      return NextResponse.json(
-        { error: "Username must be at least 3 characters." },
-        { status: 400 },
-      );
-    }
-
-    if (password.length < 6) {
-      return NextResponse.json(
-        { error: "Password must be at least 6 characters." },
-        { status: 400 },
-      );
-    }
-
-    // Phone parsing: accept 10 digits
     const digitsOnly = phone.toString().replace(/^\+91/, "").replace(/\D/g, "");
-    if (digitsOnly.length !== 10) {
-      return NextResponse.json(
-        {
-          error:
-            "Phone number must be exactly 10 digits (with +91 country code).",
-        },
-        { status: 400 },
-      );
-    }
-
     const fullPhone = `+91${digitsOnly}`;
 
     await connectDB();
 
-    // ── Duplicate check ──
+    // ── Duplicate check (case-insensitive username & phone) ──
+    const escapedUsername = trimmedUsername.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      "\\$&",
+    );
     const existing = await User.findOne({
-      $or: [{ username: trimmedUsername }, { phone: fullPhone }],
+      $or: [
+        { username: { $regex: new RegExp(`^${escapedUsername}$`, "i") } },
+        { phone: fullPhone },
+      ],
     });
 
     if (existing) {
-      const field =
-        existing.username.toLowerCase() === trimmedUsername.toLowerCase()
-          ? "Username"
-          : "Phone number";
+      const isUsernameMatch =
+        existing.username.toLowerCase() === trimmedUsername.toLowerCase();
       return NextResponse.json(
-        { error: `${field} is already registered.` },
+        {
+          error: isUsernameMatch
+            ? "Username is already registered. Please choose another."
+            : "Phone number is already registered.",
+        },
         { status: 409 },
       );
     }

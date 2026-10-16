@@ -4,6 +4,8 @@ import { signToken } from "@/lib/auth";
 import User from "@/lib/models/User";
 import { connectDB } from "@/lib/mongodb";
 
+import { validateLoginIdentifier } from "@/lib/validation";
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -16,6 +18,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const validation = validateLoginIdentifier(username);
+    if (!validation.isValid) {
+      return NextResponse.json({ error: validation.error }, { status: 400 });
+    }
+
     const trimmedInput = username.trim();
 
     await connectDB();
@@ -24,9 +31,12 @@ export async function POST(req: NextRequest) {
     const cleanDigits = trimmedInput.replace(/^\+91/, "").replace(/\D/g, "");
     const possiblePhone =
       cleanDigits.length === 10 ? `+91${cleanDigits}` : null;
+    const escapedInput = trimmedInput.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-    // ── Find user by username or phone ──
-    const searchConditions: any[] = [{ username: trimmedInput }];
+    // ── Find user by case-insensitive username or phone ──
+    const searchConditions: any[] = [
+      { username: { $regex: new RegExp(`^${escapedInput}$`, "i") } },
+    ];
     if (possiblePhone) {
       searchConditions.push({ phone: possiblePhone });
     }
