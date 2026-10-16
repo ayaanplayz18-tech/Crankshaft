@@ -387,24 +387,41 @@ export async function PATCH(req: NextRequest) {
     // ── Reassign Shares Handler ──────────────────────────────────────────────
     if (body.action === "reassign") {
       const targetUsername =
-        typeof body.newUsername === "string" ? body.newUsername.trim() : "";
+        typeof body.toUsername === "string"
+          ? body.toUsername.trim()
+          : typeof body.newUsername === "string"
+            ? body.newUsername.trim()
+            : "";
       if (!targetUsername) {
         return NextResponse.json(
-          { error: "New username is required for share reassignment." },
+          { error: "Target username or email is required for reassignment." },
           { status: 400 },
         );
       }
 
       await connectDB();
 
-      // Check if target user is registered in User collection
+      // Check if target user is registered in User collection (by username, email, or phone)
+      const cleanEmail = targetUsername.toLowerCase();
+      const cleanDigits = targetUsername
+        .replace(/^\+91/, "")
+        .replace(/\D/g, "");
+      const possiblePhone =
+        cleanDigits.length === 10 ? `+91${cleanDigits}` : null;
       const escapedTarget = targetUsername.replace(
         /[.*+?^${}()|[\]\\]/g,
         "\\$&",
       );
-      const matchedUser = await User.findOne({
-        username: { $regex: new RegExp(`^${escapedTarget}$`, "i") },
-      }).lean();
+
+      const matchQueries: any[] = [
+        { username: { $regex: new RegExp(`^${escapedTarget}$`, "i") } },
+        { email: cleanEmail },
+      ];
+      if (possiblePhone) {
+        matchQueries.push({ phone: possiblePhone });
+      }
+
+      const matchedUser = await User.findOne({ $or: matchQueries }).lean();
 
       const canonicalUsername = matchedUser?.username || targetUsername;
       const targetUserId = matchedUser ? String(matchedUser._id) : undefined;
@@ -421,10 +438,15 @@ export async function PATCH(req: NextRequest) {
         }
 
         const oldUsername = share.username;
-        if (oldUsername.toLowerCase() === canonicalUsername.toLowerCase()) {
+        const isAlreadyAssigned =
+          oldUsername.toLowerCase() === canonicalUsername.toLowerCase() &&
+          ((targetUserId && share.userId === targetUserId) ||
+            (!targetUserId && !share.userId?.startsWith("manual_")));
+
+        if (isAlreadyAssigned) {
           return NextResponse.json(
             {
-              error: "Share allocation is already assigned to this username.",
+              error: `This share allocation is already assigned to @${canonicalUsername}.`,
             },
             { status: 400 },
           );
@@ -465,32 +487,25 @@ export async function PATCH(req: NextRequest) {
               fromUsername: oldUsername,
               toUsername: canonicalUsername,
               isRegistered: Boolean(matchedUser),
+              linkedUserId: targetUserId,
             },
           });
         }
 
         return NextResponse.json({
           success: true,
-          message: `Successfully reassigned ${share.numberOfShares} shares from @${oldUsername} to @${canonicalUsername}${matchedUser ? " (registered user linked)" : ""}`,
+          message: `Successfully reassigned ${share.numberOfShares} shares from @${oldUsername} to @${canonicalUsername}${matchedUser ? ` (linked to ${matchedUser.email || matchedUser.username})` : ""}`,
           reassignedCount: share.numberOfShares,
           fromUsername: oldUsername,
           toUsername: canonicalUsername,
           isRegistered: Boolean(matchedUser),
+          linkedUserId: targetUserId,
         });
       }
 
       // Case 2: Reassign ALL shares of a stakeholder by fromUsername
       if (body.fromUsername) {
         const fromUsername = String(body.fromUsername).trim();
-        if (fromUsername.toLowerCase() === canonicalUsername.toLowerCase()) {
-          return NextResponse.json(
-            {
-              error: "Target username must be different from current username.",
-            },
-            { status: 400 },
-          );
-        }
-
         const escapedFrom = fromUsername.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const sharesToReassign = await Share.find({
           username: { $regex: new RegExp(`^${escapedFrom}$`, "i") },
@@ -500,6 +515,32 @@ export async function PATCH(req: NextRequest) {
           return NextResponse.json(
             { error: `No shares found for @${fromUsername}.` },
             { status: 404 },
+          );
+        }
+
+        // Check if nothing to change: same username and already linked to the target user
+        if (
+          !matchedUser &&
+          fromUsername.toLowerCase() === canonicalUsername.toLowerCase()
+        ) {
+          return NextResponse.json(
+            {
+              error: "Target username must be different from current username.",
+            },
+            { status: 400 },
+          );
+        }
+
+        if (
+          matchedUser &&
+          fromUsername.toLowerCase() === canonicalUsername.toLowerCase() &&
+          sharesToReassign.every((sh) => sh.userId === targetUserId)
+        ) {
+          return NextResponse.json(
+            {
+              error: `All shares for @${fromUsername} are already linked to this user account.`,
+            },
+            { status: 400 },
           );
         }
 
@@ -540,18 +581,20 @@ export async function PATCH(req: NextRequest) {
               totalShares,
               recordsCount: sharesToReassign.length,
               isRegistered: Boolean(matchedUser),
+              linkedUserId: targetUserId,
             },
           });
         }
 
         return NextResponse.json({
           success: true,
-          message: `Successfully reassigned all ${totalShares} shares from @${fromUsername} to @${canonicalUsername}${matchedUser ? " (registered user linked)" : ""}`,
+          message: `Successfully reassigned all ${totalShares} shares from @${fromUsername} to @${canonicalUsername}${matchedUser ? ` (linked to ${matchedUser.email || matchedUser.username})` : ""}`,
           totalShares,
           recordsCount: sharesToReassign.length,
           fromUsername,
           toUsername: canonicalUsername,
           isRegistered: Boolean(matchedUser),
+          linkedUserId: targetUserId,
         });
       }
 

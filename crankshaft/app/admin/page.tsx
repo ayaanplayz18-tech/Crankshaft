@@ -547,13 +547,7 @@ export default function AdminDashboardPage() {
     e.preventDefault();
     const cleanToUsername = reassignToUsername.trim();
     if (!cleanToUsername) {
-      setReassignError("Please enter or select a recipient username.");
-      return;
-    }
-    if (cleanToUsername.toLowerCase() === reassignFromUsername.toLowerCase()) {
-      setReassignError(
-        "Target username cannot be the same as current username.",
-      );
+      setReassignError("Please enter or select a recipient username or email.");
       return;
     }
 
@@ -582,10 +576,7 @@ export default function AdminDashboardPage() {
         return;
       }
 
-      showToast(
-        data.message ||
-          `Reassigned ${reassignShareCount} shares to @${cleanToUsername}!`,
-      );
+      showToast(data.message || "Shares successfully reassigned!");
       setModalReassignOpen(false);
       setReassignToUsername("");
       setReassignShareId(null);
@@ -3170,7 +3161,7 @@ export default function AdminDashboardPage() {
             <form onSubmit={handleConfirmReassign} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-neutral-300 mb-1.5">
-                  Reassign To Username
+                  Reassign To Username or Google Email
                 </label>
                 <input
                   type="text"
@@ -3180,27 +3171,52 @@ export default function AdminDashboardPage() {
                     setReassignToUsername(e.target.value);
                     if (reassignError) setReassignError("");
                   }}
-                  placeholder="Enter recipient's registered username"
+                  placeholder="e.g. akhil_anantha or akhilanantha360@gmail.com"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-sm text-white placeholder-neutral-500 focus:border-amber-500 outline-none font-mono"
                 />
 
                 {/* Registered user match status indicator */}
                 {reassignToUsername.trim() &&
                   (() => {
+                    const search = reassignToUsername.trim().toLowerCase();
+                    const cleanPhone = search
+                      .replace(/^\+91/, "")
+                      .replace(/\D/g, "");
                     const matchedUser = users.find(
                       (u) =>
-                        u.username.toLowerCase() ===
-                        reassignToUsername.trim().toLowerCase(),
+                        u.username.toLowerCase() === search ||
+                        (u.email && u.email.toLowerCase() === search) ||
+                        (u.phone &&
+                          cleanPhone.length === 10 &&
+                          u.phone.replace(/\D/g, "").endsWith(cleanPhone)),
                     );
                     if (matchedUser) {
                       return (
-                        <div className="mt-2 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-2 text-[11px] text-emerald-400 font-mono">
-                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                          <span>
-                            Registered user found: @{matchedUser.username} (ID:{" "}
-                            {matchedUser._id.slice(0, 8)}...). Shares will link
-                            to their account.
-                          </span>
+                        <div className="mt-2.5 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs font-mono space-y-1">
+                          <div className="flex items-center gap-2 text-emerald-400 font-bold">
+                            <CheckCircle2 className="w-4 h-4 shrink-0" />
+                            <span>
+                              Registered{" "}
+                              {matchedUser.authProvider === "google"
+                                ? "Google"
+                                : "Standard"}{" "}
+                              User Found
+                            </span>
+                          </div>
+                          <div className="text-emerald-300 text-[11px] pl-6">
+                            Username: <strong>@{matchedUser.username}</strong>
+                            {matchedUser.email && (
+                              <span> • Email: {matchedUser.email}</span>
+                            )}
+                            {matchedUser.phone && (
+                              <span> • Phone: {matchedUser.phone}</span>
+                            )}
+                          </div>
+                          <div className="text-neutral-400 text-[10px] pl-6">
+                            Shares will link to account ID:{" "}
+                            {matchedUser._id.slice(0, 10)}... and appear
+                            directly in their personal /shares dashboard.
+                          </div>
                         </div>
                       );
                     }
@@ -3208,9 +3224,9 @@ export default function AdminDashboardPage() {
                       <div className="mt-2 p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-[11px] text-neutral-400 font-mono flex items-center gap-2">
                         <Info className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
                         <span>
-                          Username not in registered users list yet. Shares will
-                          be stored under @{reassignToUsername.trim()} and can
-                          be claimed when they sign up.
+                          No registered user found with this handle/email yet.
+                          Shares will be assigned under @
+                          {reassignToUsername.trim()} as a manual placeholder.
                         </span>
                       </div>
                     );
@@ -3218,36 +3234,41 @@ export default function AdminDashboardPage() {
 
                 {/* Quick selection from registered users */}
                 {users.length > 0 && (
-                  <div className="mt-2.5 space-y-1.5">
+                  <div className="mt-3 space-y-1.5">
                     <span className="text-[10px] text-neutral-500 font-mono block">
                       Quick select registered user:
                     </span>
-                    <div className="flex items-center gap-1.5 flex-wrap max-h-24 overflow-y-auto">
-                      {users
-                        .filter(
-                          (u) =>
-                            u.username.toLowerCase() !==
-                            reassignFromUsername.toLowerCase(),
-                        )
-                        .slice(0, 10)
-                        .map((u) => (
+                    <div className="flex items-center gap-1.5 flex-wrap max-h-32 overflow-y-auto pr-1">
+                      {users.slice(0, 15).map((u) => {
+                        const isSelected =
+                          reassignToUsername.toLowerCase() ===
+                            u.username.toLowerCase() ||
+                          (u.email &&
+                            reassignToUsername.toLowerCase() ===
+                              u.email.toLowerCase());
+                        return (
                           <button
                             key={u._id}
                             type="button"
                             onClick={() => {
-                              setReassignToUsername(u.username);
+                              setReassignToUsername(u.email || u.username);
                               if (reassignError) setReassignError("");
                             }}
-                            className={`text-[10px] px-2.5 py-1 rounded-md font-mono transition-colors border cursor-pointer ${
-                              reassignToUsername.toLowerCase() ===
-                              u.username.toLowerCase()
+                            className={`text-[10px] px-2.5 py-1.5 rounded-lg font-mono transition-colors border cursor-pointer flex items-center gap-1.5 ${
+                              isSelected
                                 ? "bg-amber-500 text-black border-amber-400 font-bold"
-                                : "bg-neutral-900 text-neutral-400 hover:text-white border-neutral-800"
+                                : "bg-neutral-900 text-neutral-300 hover:text-white border-neutral-800"
                             }`}
                           >
-                            @{u.username}
+                            <span>@{u.username}</span>
+                            {u.email && (
+                              <span className="opacity-60 text-[9px]">
+                                ({u.email})
+                              </span>
+                            )}
                           </button>
-                        ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -3264,12 +3285,7 @@ export default function AdminDashboardPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={
-                    submittingReassign ||
-                    !reassignToUsername.trim() ||
-                    reassignToUsername.trim().toLowerCase() ===
-                      reassignFromUsername.toLowerCase()
-                  }
+                  disabled={submittingReassign || !reassignToUsername.trim()}
                   className="px-5 py-2.5 rounded-xl bg-amber-500 text-black text-xs font-bold hover:bg-amber-400 transition-colors flex items-center gap-2 disabled:opacity-50 cursor-pointer shadow-lg shadow-amber-900/30"
                 >
                   {submittingReassign ? (

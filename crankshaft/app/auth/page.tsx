@@ -423,8 +423,8 @@ function AuthForm() {
                 "
               />
             </div>
-            {mode === "signup" ? (
-              username.includes("@") || /@gmail\.com$/i.test(username) ? (
+            {mode === "signup" &&
+              (username.includes("@") || /@gmail\.com$/i.test(username) ? (
                 <p className="mt-1.5 text-[11px] text-amber-400 flex items-center gap-1 font-medium">
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>
@@ -436,16 +436,7 @@ function AuthForm() {
                 <p className="mt-1 text-[11px] text-neutral-500">
                   3–30 characters • Letters, numbers, _ and - • No emails
                 </p>
-              )
-            ) : username.includes("@") || /@gmail\.com$/i.test(username) ? (
-              <p className="mt-1.5 text-[11px] text-amber-400 flex items-center gap-1">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>
-                  Email entered. Please sign in using your username or phone
-                  number (or use Google Sign-In).
-                </span>
-              </p>
-            ) : null}
+              ))}
           </div>
 
           {/* Phone Number Field (Visible on Sign Up, with +91 badge) */}
