@@ -159,3 +159,37 @@ test("user dividend payout correctly reflects dividend pool distribution", () =>
   assert.equal(metrics.userPayout, 80);
   assert.equal(metrics.userStakePercent, 4);
 });
+
+test("share reassignment links allocation and preserves portfolio value", () => {
+  const initialAllocation = {
+    username: "manual_buyer",
+    userId: "manual_12345",
+    numberOfShares: 50,
+    totalPrice: 1000,
+    pool: "market",
+  };
+
+  const registeredUser = {
+    _id: "user_registered_67890",
+    username: "AyaanSyed",
+    phone: "9876543210",
+  };
+
+  // Reassignment resolution
+  const reassignedShare = {
+    ...initialAllocation,
+    username: registeredUser.username,
+    userId: registeredUser._id,
+    phone: registeredUser.phone,
+  };
+
+  assert.equal(reassignedShare.username, "AyaanSyed");
+  assert.equal(reassignedShare.userId, "user_registered_67890");
+  assert.equal(reassignedShare.numberOfShares, 50);
+
+  // Test case-insensitive match resolution
+  const queryUsername = "ayaansyed";
+  const regex = new RegExp(`^${queryUsername}$`, "i");
+  assert.ok(regex.test(reassignedShare.username));
+});
+

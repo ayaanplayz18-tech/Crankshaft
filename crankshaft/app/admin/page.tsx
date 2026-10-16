@@ -18,6 +18,7 @@ import {
   Plus,
   Receipt,
   RefreshCw,
+  Repeat,
   Search,
   ShieldAlert,
   ShieldCheck,
@@ -229,6 +230,16 @@ export default function AdminDashboardPage() {
   const [addShareNotes, setAddShareNotes] = useState("");
   const [submittingShare, setSubmittingShare] = useState(false);
   const [shareGrantError, setShareGrantError] = useState("");
+
+  // Reassign shares modal state
+  const [modalReassignOpen, setModalReassignOpen] = useState(false);
+  const [reassignFromUsername, setReassignFromUsername] = useState("");
+  const [reassignShareId, setReassignShareId] = useState<string | null>(null);
+  const [reassignShareCount, setReassignShareCount] = useState<number>(0);
+  const [reassignOrderId, setReassignOrderId] = useState<string | null>(null);
+  const [reassignToUsername, setReassignToUsername] = useState("");
+  const [submittingReassign, setSubmittingReassign] = useState(false);
+  const [reassignError, setReassignError] = useState("");
 
   // Capital & Financial valuation modification state
   const [modalCapitalOpen, setModalCapitalOpen] = useState(false);
@@ -509,6 +520,82 @@ export default function AdminDashboardPage() {
       loadOrders();
     } catch (err: any) {
       showToast(err.message || "Failed to revoke share", "error");
+    }
+  };
+
+  const openReassignStakeholder = (stakeholder: StakeholderItem) => {
+    setReassignFromUsername(stakeholder.username);
+    setReassignShareId(null);
+    setReassignOrderId(null);
+    setReassignShareCount(stakeholder.totalShares);
+    setReassignToUsername("");
+    setReassignError("");
+    setModalReassignOpen(true);
+  };
+
+  const openReassignRecord = (username: string, record: any) => {
+    setReassignFromUsername(username);
+    setReassignShareId(record._id);
+    setReassignOrderId(record.orderId);
+    setReassignShareCount(record.numberOfShares);
+    setReassignToUsername("");
+    setReassignError("");
+    setModalReassignOpen(true);
+  };
+
+  const handleConfirmReassign = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanToUsername = reassignToUsername.trim();
+    if (!cleanToUsername) {
+      setReassignError("Please enter or select a recipient username.");
+      return;
+    }
+    if (cleanToUsername.toLowerCase() === reassignFromUsername.toLowerCase()) {
+      setReassignError(
+        "Target username cannot be the same as current username.",
+      );
+      return;
+    }
+
+    setSubmittingReassign(true);
+    setReassignError("");
+    try {
+      const payload: any = {
+        action: "reassign",
+        toUsername: cleanToUsername,
+      };
+      if (reassignShareId) {
+        payload.shareId = reassignShareId;
+      } else {
+        payload.fromUsername = reassignFromUsername;
+      }
+
+      const res = await fetch("/api/admin/shares", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setReassignError(data.error || "Failed to reassign shares.");
+        return;
+      }
+
+      showToast(
+        data.message ||
+          `Reassigned ${reassignShareCount} shares to @${cleanToUsername}!`,
+      );
+      setModalReassignOpen(false);
+      setReassignToUsername("");
+      setReassignShareId(null);
+      await loadShares();
+      loadLogs();
+      loadOrders();
+    } catch (err: any) {
+      setReassignError(err.message || "Network error reassigning shares.");
+    } finally {
+      setSubmittingReassign(false);
     }
   };
 
@@ -2227,6 +2314,18 @@ export default function AdminDashboardPage() {
                               <button
                                 type="button"
                                 onClick={() =>
+                                  openReassignStakeholder(stakeholder)
+                                }
+                                className="px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-xs font-semibold text-amber-300 transition-colors flex items-center gap-1.5 cursor-pointer"
+                                title={`Reassign all ${stakeholder.totalShares} shares from @${stakeholder.username} to another user`}
+                              >
+                                <Repeat className="w-3.5 h-3.5 text-amber-400" />
+                                <span>Reassign</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
                                   setExpandedStakeholder(
                                     isExpanded ? null : stakeholder.username,
                                   )
@@ -2311,7 +2410,22 @@ export default function AdminDashboardPage() {
                                       </div>
                                     </div>
 
-                                    <div>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          openReassignRecord(
+                                            stakeholder.username,
+                                            record,
+                                          )
+                                        }
+                                        className="px-2.5 py-1 rounded-lg border border-amber-500/20 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 text-[11px] font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+                                        title="Reassign this allocation record to another user"
+                                      >
+                                        <Repeat className="w-3 h-3 text-amber-400" />
+                                        <span>Reassign</span>
+                                      </button>
+
                                       <button
                                         type="button"
                                         onClick={() =>
@@ -2971,6 +3085,202 @@ export default function AdminDashboardPage() {
                     <>
                       <Plus className="w-3.5 h-3.5" />
                       <span>Allocate Shares</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── REASSIGN SHARES MODAL ─────────────────────────────────────── */}
+      {modalReassignOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="relative w-full max-w-lg rounded-2xl bg-neutral-950 border border-neutral-800 shadow-2xl p-6 sm:p-7 space-y-5 text-white max-h-[92vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-neutral-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                  <Repeat className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">
+                    Reassign Shares
+                  </h3>
+                  <p className="text-xs text-neutral-400">
+                    Transfer share allocation to a registered user
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalReassignOpen(false)}
+                className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-900 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Reassignment Target Summary */}
+            <div className="p-3.5 rounded-xl bg-amber-500/5 border border-amber-500/20 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-neutral-400">Current Owner:</span>
+                <span className="font-mono font-bold text-amber-300">
+                  @{reassignFromUsername}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-neutral-400">Shares to Reassign:</span>
+                <span className="font-mono font-bold text-white">
+                  {reassignShareCount} shares (
+                  {(reassignShareCount / 10).toFixed(1)}% equity)
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-neutral-400">Scope:</span>
+                <span className="font-mono text-neutral-300 text-[11px]">
+                  {reassignShareId
+                    ? `Single lot (Order: ${reassignOrderId || "Manual"})`
+                    : "All lots for this stakeholder"}
+                </span>
+              </div>
+            </div>
+
+            {/* Context Note */}
+            <div className="p-3 rounded-xl bg-neutral-900/60 border border-neutral-800 flex items-start gap-2.5 text-xs text-neutral-400">
+              <Info className="w-4 h-4 text-neutral-400 shrink-0 mt-0.5" />
+              <span>
+                If someone bought shares under a custom or manual name before
+                registering, reassigning links the allocation directly to their
+                registered username and account ID so it displays immediately in
+                their personal <strong>My Shares</strong> tab.
+              </span>
+            </div>
+
+            {/* Error banner */}
+            {reassignError && (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center gap-2 text-xs text-red-400">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{reassignError}</span>
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleConfirmReassign} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-neutral-300 mb-1.5">
+                  Reassign To Username
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={reassignToUsername}
+                  onChange={(e) => {
+                    setReassignToUsername(e.target.value);
+                    if (reassignError) setReassignError("");
+                  }}
+                  placeholder="Enter recipient's registered username"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-sm text-white placeholder-neutral-500 focus:border-amber-500 outline-none font-mono"
+                />
+
+                {/* Registered user match status indicator */}
+                {reassignToUsername.trim() &&
+                  (() => {
+                    const matchedUser = users.find(
+                      (u) =>
+                        u.username.toLowerCase() ===
+                        reassignToUsername.trim().toLowerCase(),
+                    );
+                    if (matchedUser) {
+                      return (
+                        <div className="mt-2 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-2 text-[11px] text-emerald-400 font-mono">
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                          <span>
+                            Registered user found: @{matchedUser.username} (ID:{" "}
+                            {matchedUser._id.slice(0, 8)}...). Shares will link
+                            to their account.
+                          </span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="mt-2 p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-[11px] text-neutral-400 font-mono flex items-center gap-2">
+                        <Info className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
+                        <span>
+                          Username not in registered users list yet. Shares will
+                          be stored under @{reassignToUsername.trim()} and can
+                          be claimed when they sign up.
+                        </span>
+                      </div>
+                    );
+                  })()}
+
+                {/* Quick selection from registered users */}
+                {users.length > 0 && (
+                  <div className="mt-2.5 space-y-1.5">
+                    <span className="text-[10px] text-neutral-500 font-mono block">
+                      Quick select registered user:
+                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap max-h-24 overflow-y-auto">
+                      {users
+                        .filter(
+                          (u) =>
+                            u.username.toLowerCase() !==
+                            reassignFromUsername.toLowerCase(),
+                        )
+                        .slice(0, 10)
+                        .map((u) => (
+                          <button
+                            key={u._id}
+                            type="button"
+                            onClick={() => {
+                              setReassignToUsername(u.username);
+                              if (reassignError) setReassignError("");
+                            }}
+                            className={`text-[10px] px-2.5 py-1 rounded-md font-mono transition-colors border cursor-pointer ${
+                              reassignToUsername.toLowerCase() ===
+                              u.username.toLowerCase()
+                                ? "bg-amber-500 text-black border-amber-400 font-bold"
+                                : "bg-neutral-900 text-neutral-400 hover:text-white border-neutral-800"
+                            }`}
+                          >
+                            @{u.username}
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setModalReassignOpen(false)}
+                  className="px-4 py-2.5 rounded-xl border border-neutral-800 text-neutral-300 hover:bg-neutral-900 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    submittingReassign ||
+                    !reassignToUsername.trim() ||
+                    reassignToUsername.trim().toLowerCase() ===
+                      reassignFromUsername.toLowerCase()
+                  }
+                  className="px-5 py-2.5 rounded-xl bg-amber-500 text-black text-xs font-bold hover:bg-amber-400 transition-colors flex items-center gap-2 disabled:opacity-50 cursor-pointer shadow-lg shadow-amber-900/30"
+                >
+                  {submittingReassign ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Reassigning...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Repeat className="w-3.5 h-3.5" />
+                      <span>Confirm Reassignment</span>
                     </>
                   )}
                 </button>

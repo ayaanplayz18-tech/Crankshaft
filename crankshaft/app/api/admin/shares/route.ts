@@ -384,6 +384,185 @@ export async function PATCH(req: NextRequest) {
 
     const body = await req.json();
 
+    // ── Reassign Shares Handler ──────────────────────────────────────────────
+    if (body.action === "reassign") {
+      const targetUsername =
+        typeof body.newUsername === "string" ? body.newUsername.trim() : "";
+      if (!targetUsername) {
+        return NextResponse.json(
+          { error: "New username is required for share reassignment." },
+          { status: 400 },
+        );
+      }
+
+      await connectDB();
+
+      // Check if target user is registered in User collection
+      const escapedTarget = targetUsername.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&",
+      );
+      const matchedUser = await User.findOne({
+        username: { $regex: new RegExp(`^${escapedTarget}$`, "i") },
+      }).lean();
+
+      const canonicalUsername = matchedUser?.username || targetUsername;
+      const targetUserId = matchedUser ? String(matchedUser._id) : undefined;
+      const targetPhone = matchedUser?.phone || undefined;
+
+      // Case 1: Reassign a specific share record by ID
+      if (body.shareId) {
+        const share = await Share.findById(body.shareId);
+        if (!share) {
+          return NextResponse.json(
+            { error: "Share record not found." },
+            { status: 404 },
+          );
+        }
+
+        const oldUsername = share.username;
+        if (oldUsername.toLowerCase() === canonicalUsername.toLowerCase()) {
+          return NextResponse.json(
+            {
+              error: "Share allocation is already assigned to this username.",
+            },
+            { status: 400 },
+          );
+        }
+
+        const resolvedUserId =
+          targetUserId ||
+          (share.userId && !share.userId.startsWith("manual_")
+            ? share.userId
+            : `manual_${Date.now()}`);
+
+        share.username = canonicalUsername;
+        share.userId = resolvedUserId;
+        if (targetPhone) share.phone = targetPhone;
+        await share.save();
+
+        // Also update matching internal order record if exists
+        await Order.findOneAndUpdate(
+          { orderId: share.orderId },
+          {
+            userId: resolvedUserId,
+            "metadata.username": canonicalUsername,
+            "metadata.userId": resolvedUserId,
+          },
+        );
+
+        const isGhost = await isGhostSession(session);
+        if (!isGhost) {
+          await AdminLog.create({
+            adminName: session.username,
+            command: `${session.username} reassigned ${share.numberOfShares} shares (Order: ${share.orderId}) from @${oldUsername} to @${canonicalUsername}${matchedUser ? " (registered user linked)" : ""}`,
+            actionType: "SHARE_GRANT",
+            metadata: {
+              type: "share_reassignment",
+              shareId: share._id,
+              orderId: share.orderId,
+              numberOfShares: share.numberOfShares,
+              fromUsername: oldUsername,
+              toUsername: canonicalUsername,
+              isRegistered: Boolean(matchedUser),
+            },
+          });
+        }
+
+        return NextResponse.json({
+          success: true,
+          message: `Successfully reassigned ${share.numberOfShares} shares from @${oldUsername} to @${canonicalUsername}${matchedUser ? " (registered user linked)" : ""}`,
+          reassignedCount: share.numberOfShares,
+          fromUsername: oldUsername,
+          toUsername: canonicalUsername,
+          isRegistered: Boolean(matchedUser),
+        });
+      }
+
+      // Case 2: Reassign ALL shares of a stakeholder by fromUsername
+      if (body.fromUsername) {
+        const fromUsername = String(body.fromUsername).trim();
+        if (fromUsername.toLowerCase() === canonicalUsername.toLowerCase()) {
+          return NextResponse.json(
+            {
+              error: "Target username must be different from current username.",
+            },
+            { status: 400 },
+          );
+        }
+
+        const escapedFrom = fromUsername.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const sharesToReassign = await Share.find({
+          username: { $regex: new RegExp(`^${escapedFrom}$`, "i") },
+        });
+
+        if (sharesToReassign.length === 0) {
+          return NextResponse.json(
+            { error: `No shares found for @${fromUsername}.` },
+            { status: 404 },
+          );
+        }
+
+        const resolvedUserId = targetUserId || `manual_${Date.now()}`;
+        let totalShares = 0;
+        const orderIds: string[] = [];
+
+        for (const sh of sharesToReassign) {
+          totalShares += sh.numberOfShares;
+          orderIds.push(sh.orderId);
+          sh.username = canonicalUsername;
+          sh.userId = resolvedUserId;
+          if (targetPhone) sh.phone = targetPhone;
+          await sh.save();
+        }
+
+        await Order.updateMany(
+          { orderId: { $in: orderIds } },
+          {
+            $set: {
+              userId: resolvedUserId,
+              "metadata.username": canonicalUsername,
+              "metadata.userId": resolvedUserId,
+            },
+          },
+        );
+
+        const isGhost = await isGhostSession(session);
+        if (!isGhost) {
+          await AdminLog.create({
+            adminName: session.username,
+            command: `${session.username} reassigned all ${totalShares} shares across ${sharesToReassign.length} record(s) from @${fromUsername} to @${canonicalUsername}${matchedUser ? " (registered user linked)" : ""}`,
+            actionType: "SHARE_GRANT",
+            metadata: {
+              type: "stakeholder_reassignment",
+              fromUsername,
+              toUsername: canonicalUsername,
+              totalShares,
+              recordsCount: sharesToReassign.length,
+              isRegistered: Boolean(matchedUser),
+            },
+          });
+        }
+
+        return NextResponse.json({
+          success: true,
+          message: `Successfully reassigned all ${totalShares} shares from @${fromUsername} to @${canonicalUsername}${matchedUser ? " (registered user linked)" : ""}`,
+          totalShares,
+          recordsCount: sharesToReassign.length,
+          fromUsername,
+          toUsername: canonicalUsername,
+          isRegistered: Boolean(matchedUser),
+        });
+      }
+
+      return NextResponse.json(
+        {
+          error: "Either shareId or fromUsername is required for reassignment.",
+        },
+        { status: 400 },
+      );
+    }
+
     // Reject direct attempts to override market value
     if (
       body.pricePerShare !== undefined &&
