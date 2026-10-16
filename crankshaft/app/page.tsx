@@ -21,9 +21,9 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export const metadata: Metadata = {
-  title: "CrankShaft — Drive Your Investments",
+  title: "CrankShaft",
   description:
-    "Explore, share, and invest in the automotive world with CrankShaft — the premium platform for car enthusiasts and investors.",
+    "A Website Built For Our Investors.",
 };
 
 async function getActivePoster(): Promise<{ url: string; name: string }> {
