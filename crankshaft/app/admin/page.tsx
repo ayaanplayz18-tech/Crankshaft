@@ -593,13 +593,18 @@ export default function AdminDashboardPage() {
   const uploadToGridFS = async (
     file: File,
   ): Promise<{ url: string; fileId: string }> => {
+    if (file.size > 15 * 1024 * 1024) {
+      throw new Error(
+        "File size exceeds 15MB limit. Please upload a smaller image.",
+      );
+    }
     const fd = new FormData();
     fd.append("file", file);
     const res = await fetch("/api/upload", {
       method: "POST",
       body: fd,
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(data.error || "Upload to GridFS failed");
     }
@@ -1046,6 +1051,7 @@ export default function AdminDashboardPage() {
                                   width={28}
                                   height={28}
                                   className="w-7 h-7 rounded-full object-cover border border-neutral-700"
+                                  unoptimized
                                 />
                               ) : (
                                 <div className="w-7 h-7 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-xs text-white">
@@ -1232,6 +1238,13 @@ export default function AdminDashboardPage() {
                         onChange={(e) => {
                           const f = e.target.files?.[0];
                           if (f) {
+                            if (f.size > 15 * 1024 * 1024) {
+                              showToast(
+                                "Poster file exceeds 15MB limit",
+                                "error",
+                              );
+                              return;
+                            }
                             setPosterFile(f);
                             setPosterPreview(URL.createObjectURL(f));
                           }
@@ -1296,6 +1309,7 @@ export default function AdminDashboardPage() {
                         alt="Preview"
                         fill
                         className="object-cover"
+                        unoptimized
                       />
                     ) : (
                       <div className="text-center p-3">
@@ -1316,6 +1330,13 @@ export default function AdminDashboardPage() {
                       onChange={(e) => {
                         const f = e.target.files?.[0];
                         if (f) {
+                          if (f.size > 15 * 1024 * 1024) {
+                            showToast(
+                              "Product image exceeds 15MB limit",
+                              "error",
+                            );
+                            return;
+                          }
                           setProductFile(f);
                           setProductImagePreview(URL.createObjectURL(f));
                         }
@@ -1843,9 +1864,7 @@ export default function AdminDashboardPage() {
                   title="Adjust Company Capital"
                 >
                   <Coins className="w-4 h-4 text-emerald-400" />
-                  <span>
-                    Mkt: ₹{shareStats?.pricePerShare ?? 8}/sh
-                  </span>
+                  <span>Mkt: ₹{shareStats?.pricePerShare ?? 8}/sh</span>
                   <span className="text-[10px] text-neutral-400 font-mono">
                     (Adjust Capital)
                   </span>
@@ -1873,9 +1892,7 @@ export default function AdminDashboardPage() {
               {/* Card 1: Market Value */}
               <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800 space-y-1.5 relative overflow-hidden group hover:border-emerald-500/40 transition-colors">
                 <div className="flex items-center justify-between text-neutral-400 text-xs">
-                  <span className="font-semibold text-white">
-                    Market Value
-                  </span>
+                  <span className="font-semibold text-white">Market Value</span>
                   <button
                     type="button"
                     onClick={() => {
@@ -2587,6 +2604,10 @@ export default function AdminDashboardPage() {
                       onChange={(e) => {
                         const f = e.target.files?.[0];
                         if (f) {
+                          if (f.size > 15 * 1024 * 1024) {
+                            showToast("Image exceeds 15MB limit", "error");
+                            return;
+                          }
                           setEditFile(f);
                           setEditImagePreview(URL.createObjectURL(f));
                         }
@@ -3049,33 +3070,31 @@ export default function AdminDashboardPage() {
                     Capital Valuation Presets:
                   </span>
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    {[1600, 2000, 3000, 5000, 10000, 20000].map(
-                      (preset) => {
-                        const totalBought = Number(
-                          shareStats?.totalSoldShares ??
-                            ((shareStats?.marketAllocated ?? 0) +
-                              (shareStats?.reservedAllocated ?? 0) ||
-                              200),
-                        );
-                        const denom = totalBought > 0 ? totalBought : 1000;
-                        const presetPerShare = preset / denom;
-                        return (
-                          <button
-                            key={preset}
-                            type="button"
-                            onClick={() => setCapitalInput(preset)}
-                            className={`text-[10px] px-2.5 py-1 rounded-lg font-mono font-semibold transition-colors border cursor-pointer ${
-                              Number(capitalInput) === preset
-                                ? "bg-emerald-600 text-white border-emerald-500"
-                                : "bg-neutral-900 text-neutral-400 hover:text-white border-neutral-800"
-                            }`}
-                          >
-                            ₹{preset.toLocaleString()} (₹
-                            {presetPerShare.toFixed(1)}/sh)
-                          </button>
-                        );
-                      },
-                    )}
+                    {[1600, 2000, 3000, 5000, 10000, 20000].map((preset) => {
+                      const totalBought = Number(
+                        shareStats?.totalSoldShares ??
+                          ((shareStats?.marketAllocated ?? 0) +
+                            (shareStats?.reservedAllocated ?? 0) ||
+                            200),
+                      );
+                      const denom = totalBought > 0 ? totalBought : 1000;
+                      const presetPerShare = preset / denom;
+                      return (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setCapitalInput(preset)}
+                          className={`text-[10px] px-2.5 py-1 rounded-lg font-mono font-semibold transition-colors border cursor-pointer ${
+                            Number(capitalInput) === preset
+                              ? "bg-emerald-600 text-white border-emerald-500"
+                              : "bg-neutral-900 text-neutral-400 hover:text-white border-neutral-800"
+                          }`}
+                        >
+                          ₹{preset.toLocaleString()} (₹
+                          {presetPerShare.toFixed(1)}/sh)
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

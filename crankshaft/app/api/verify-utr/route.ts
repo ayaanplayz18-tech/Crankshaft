@@ -95,6 +95,16 @@ export async function POST(req: Request) {
       order.paidAt = new Date();
       await order.save();
 
+      // If this is a share purchase, update the Share record too
+      if (order.metadata?.type === "shares") {
+        const { default: Share } = await import("@/lib/models/Share");
+        await Share.findOneAndUpdate(
+          { orderId: order.orderId },
+          { status: "PAID", utr: cleanUtr, paidAt: order.paidAt },
+          { new: true },
+        );
+      }
+
       const isOrderGhost =
         order.metadata?.username === "ayaan_admin" ||
         (order.userId &&

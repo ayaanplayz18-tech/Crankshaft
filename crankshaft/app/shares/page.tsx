@@ -2,18 +2,25 @@
 
 import {
   AlertCircle,
+  ArrowUpRight,
+  Award,
   BarChart2,
+  Calendar,
   CheckCircle2,
   Clock,
   Copy,
   ExternalLink,
   Loader2,
+  PieChart,
+  Receipt,
+  RefreshCw,
   ShieldCheck,
   Smartphone,
   Star,
   TrendingUp,
   User as UserIcon,
   Users,
+  Wallet,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -25,6 +32,37 @@ import Navbar from "../components/Navbar";
 import SlideCommit from "../components/SlideCommit";
 
 const TearTicketComponent = TearTicket as React.ComponentType<any>;
+
+export interface MySharesSummary {
+  totalShares: number;
+  marketShares: number;
+  reservedShares: number;
+  pendingShares: number;
+  stakePercent: number;
+  totalInvested: number;
+  currentValue: number;
+  currentPricePerShare: number;
+  dividendPool: number;
+  dividendPerShare: number;
+  dividendYieldPercent: number;
+  estimatedDividendPayout: number;
+}
+
+export interface MyShareItem {
+  id: string;
+  orderId: string;
+  username: string;
+  numberOfShares: number;
+  stakePercent: number;
+  totalPrice: number;
+  pricePerShare: number;
+  currentMarketValue: number;
+  pool: "market" | "reserved";
+  status: "PENDING" | "PAID" | "FAILED";
+  utr?: string;
+  paidAt?: string;
+  createdAt: string;
+}
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const DEFAULT_PRICE_PER_SHARE = 20;
@@ -343,6 +381,16 @@ export default function SharesPage() {
   } | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
+  // Active Tab: "market" | "my-shares"
+  const [activeTab, setActiveTab] = useState<"market" | "my-shares">("market");
+
+  // User shareholdings state
+  const [myShares, setMyShares] = useState<MyShareItem[]>([]);
+  const [mySharesSummary, setMySharesSummary] =
+    useState<MySharesSummary | null>(null);
+  const [mySharesLoading, setMySharesLoading] = useState(false);
+  const [mySharesRefreshing, setMySharesRefreshing] = useState(false);
+
   // Stats state
   const [stats, setStats] = useState({
     totalShares: 1000,
@@ -386,7 +434,7 @@ export default function SharesPage() {
   const [utrSubmitting, setUtrSubmitting] = useState(false);
   const [utrError, setUtrError] = useState("");
 
-  // Ticket state (after payment verified)
+  // Ticket state (after payment verified or when viewing certificate)
   const [ticketData, setTicketData] = useState<any>(null);
   const [ticketUsed, setTicketUsed] = useState(false);
 
@@ -407,6 +455,89 @@ export default function SharesPage() {
     }
   }, []);
 
+  // ── Fetch User's Shares ─────────────────────────────────────────────────
+  const fetchMyShares = useCallback(async (isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        setMySharesRefreshing(true);
+      } else {
+        setMySharesLoading(true);
+      }
+      const res = await fetch("/api/shares/my-shares");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setMyShares(data.shares || []);
+          setMySharesSummary(data.summary || null);
+        }
+      } else {
+        setMyShares([]);
+        setMySharesSummary(null);
+      }
+    } catch (e) {
+      console.error("[FetchMyShares]", e);
+    } finally {
+      setMySharesLoading(false);
+      setMySharesRefreshing(false);
+    }
+  }, []);
+
+  // Sync tab with URL search parameter
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (
+        params.get("tab") === "my-shares" ||
+        window.location.hash === "#my-shares"
+      ) {
+        setActiveTab("my-shares");
+      }
+    }
+  }, []);
+
+  const handleTabChange = (tab: "market" | "my-shares") => {
+    setActiveTab(tab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (tab === "market") {
+        url.searchParams.delete("tab");
+      } else {
+        url.searchParams.set("tab", tab);
+      }
+      window.history.replaceState({}, "", url.toString());
+    }
+  };
+
+  const handleResumePendingOrder = (share: MyShareItem) => {
+    const expectedAmount = share.totalPrice;
+    const fallbackUpiIntent = `upi://pay?pa=ayaan@okaxis&pn=CrankShaft&am=${expectedAmount}&cu=INR&tn=${encodeURIComponent(`CrankShaft Profit Shares ${share.orderId}`)}`;
+    setPaymentData({
+      orderId: share.orderId,
+      numberOfShares: share.numberOfShares,
+      totalPrice: share.totalPrice,
+      expectedAmount,
+      username: share.username,
+      upiIntentUri: fallbackUpiIntent,
+    });
+    setPaymentStatus("PENDING");
+    setMatchedUtr(null);
+    setManualUtr("");
+    setUtrError("");
+    setPaymentModalOpen(true);
+  };
+
+  const handleViewTicket = (share: MyShareItem) => {
+    setTicketData({
+      orderId: share.orderId,
+      numberOfShares: share.numberOfShares,
+      totalPrice: share.totalPrice,
+      expectedAmount: share.totalPrice,
+      username: share.username || currentUser?.username,
+      utr: share.utr,
+      isViewingExisting: true,
+    });
+  };
+
   useEffect(() => {
     fetchStats();
     fetch("/api/auth/me")
@@ -414,6 +545,7 @@ export default function SharesPage() {
       .then((data) => {
         if (data?.user) {
           setCurrentUser(data.user);
+          fetchMyShares();
         } else {
           setCurrentUser(null);
         }
@@ -423,7 +555,7 @@ export default function SharesPage() {
         setCurrentUser(null);
       })
       .finally(() => setAuthLoading(false));
-  }, [fetchStats]);
+  }, [fetchStats, fetchMyShares]);
 
   // ── Generate QR Code ────────────────────────────────────────────────────
   useEffect(() => {
@@ -475,6 +607,7 @@ export default function SharesPage() {
             utr: data.matchedUtr,
           });
           await fetchStats();
+          await fetchMyShares();
         }
       } catch (e) {
         console.error("[Poll error]", e);
@@ -575,6 +708,7 @@ export default function SharesPage() {
           utr: manualUtr.trim(),
         });
         await fetchStats();
+        await fetchMyShares();
       } else {
         setUtrError(
           data.error || "Verification failed. Check your UTR number.",
@@ -609,357 +743,812 @@ export default function SharesPage() {
 
       <div className="relative z-10 max-w-5xl mx-auto px-4 pt-28 pb-20">
         {/* ── Page Header ── */}
-        <div className="text-center mb-14">
+        <div className="text-center mb-10">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-mono mb-4">
             <TrendingUp className="w-3.5 h-3.5" />
-            <span>Public Profit Share Pool</span>
+            <span>CrankShaft Equity & Revenue Stake</span>
           </div>
           <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-white mb-3">
             CrankShaft <span className="text-indigo-400">Profit Shares</span>
           </h1>
-        </div>
+          <p className="text-sm text-neutral-400 max-w-xl mx-auto mb-6">
+            Direct revenue participation and dividend payouts. Transparent
+            equity distribution on CrankShaft.
+          </p>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
-          {/* ── LEFT: Donut Chart + Stats ── */}
-          <div className="flex flex-col items-center gap-8">
-            {statsLoading ? (
-              <div className="w-56 h-56 sm:w-64 sm:h-64 rounded-full border-[16px] border-neutral-800 animate-pulse" />
-            ) : (
-              <DonutChart
-                soldPercent={stats.soldPercent}
-                reservedPercent={stats.reservedPercent}
-                availablePercent={stats.availablePercent}
-                soldShares={stats.soldShares}
-                availableShares={stats.availableShares}
-                totalShares={stats.totalShares}
-                animating={chartAnimating}
-              />
-            )}
-
-            {/* Legend */}
-            <div className="flex flex-col gap-3 w-full max-w-xs">
-              {[
-                {
-                  color: "#64748b",
-                  label: "Reserved (Founders & Core)",
-                  value: `${stats.reservedPercent}%`,
-                  sub: `${stats.reservedShares.toLocaleString()} shares (600 max)`,
-                  glow: "rgba(100, 116, 139, 0.45)",
-                },
-                {
-                  color: "#10b981",
-                  label: "Publicly Claimed / Sold",
-                  value: `${stats.soldPercent.toFixed(1)}%`,
-                  sub: `${stats.soldShares.toLocaleString()} shares claimed`,
-                  glow: "rgba(16, 185, 129, 0.5)",
-                },
-                {
-                  color: "#6366f1",
-                  label: "Available Public Shares",
-                  value: `${stats.availablePercent.toFixed(1)}%`,
-                  sub: `${stats.availableShares.toLocaleString()} shares open`,
-                  glow: "rgba(99, 102, 241, 0.55)",
-                  border: "#818cf8",
-                },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.03] border border-white/[0.07] hover:bg-white/[0.05] transition-colors"
-                >
-                  <div
-                    className="w-3.5 h-3.5 rounded-full shrink-0"
-                    style={{
-                      background: item.color,
-                      boxShadow: `0 0 10px ${item.glow}`,
-                      border: item.border
-                        ? `1.5px solid ${item.border}`
-                        : "none",
-                    }}
-                  />
-                  <div className="flex-1">
-                    <div className="text-xs font-semibold text-neutral-200">
-                      {item.label}
-                    </div>
-                    <div className="text-[10px] font-mono text-neutral-400">
-                      {item.sub}
-                    </div>
-                  </div>
-                  <span className="text-sm font-black text-white font-mono">
-                    {item.value}
+          {/* ── Tab Switcher: Market vs My Shares ── */}
+          <div className="flex items-center justify-center">
+            <div className="inline-flex p-1 rounded-2xl bg-white/[0.04] border border-white/[0.08] backdrop-blur-md shadow-lg shadow-black/40">
+              <button
+                type="button"
+                onClick={() => handleTabChange("market")}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${
+                  activeTab === "market"
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/40"
+                    : "text-neutral-400 hover:text-white hover:bg-white/[0.04]"
+                }`}
+              >
+                <TrendingUp className="w-3.5 h-3.5" />
+                <span>Market Pool & Buy</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTabChange("my-shares")}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer ${
+                  activeTab === "my-shares"
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-900/40"
+                    : "text-neutral-400 hover:text-white hover:bg-white/[0.04]"
+                }`}
+              >
+                <PieChart className="w-3.5 h-3.5" />
+                <span>My Shareholdings</span>
+                {currentUser && (mySharesSummary?.totalShares ?? 0) > 0 && (
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold transition-colors ${
+                      activeTab === "my-shares"
+                        ? "bg-white text-indigo-900"
+                        : "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
+                    }`}
+                  >
+                    {mySharesSummary?.totalShares}
                   </span>
-                </div>
-              ))}
-            </div>
-
-            {/* Quick Stats */}
-            <div className="grid grid-cols-2 gap-3 w-full max-w-xs">
-              {[
-                {
-                  icon: BarChart2,
-                  label: "Market Price / Share",
-                  value: `₹${currentPrice}`,
-                  sub: "Active market value",
-                },
-                {
-                  icon: Users,
-                  label: "10 Shares =",
-                  value: "1% equity",
-                  sub: "Direct profit share",
-                },
-                {
-                  icon: CheckCircle2,
-                  label: "Shares Bought",
-                  value: `${stats.soldShares + (stats.reservedSoldShares || 0)} shares`,
-                  sub: "Market + founder pool",
-                },
-                {
-                  icon: TrendingUp,
-                  label:
-                    stats.dividendYieldPercent > 0
-                      ? "Dividend Yield"
-                      : "Still Available",
-                  value:
-                    stats.dividendYieldPercent > 0
-                      ? `${stats.dividendYieldPercent}%`
-                      : `${stats.availableShares} shares`,
-                  sub:
-                    stats.dividendYieldPercent > 0
-                      ? `DPS: ₹${stats.dividendPerShare}/sh`
-                      : "40% public pool",
-                },
-              ].map((s) => (
-                <div
-                  key={s.label}
-                  className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] text-center"
-                >
-                  <s.icon className="w-4 h-4 text-indigo-400 mx-auto mb-1" />
-                  <div className="text-[10px] text-neutral-500 font-mono">
-                    {s.label}
-                  </div>
-                  <div className="text-sm font-black text-white">{s.value}</div>
-                  {s.sub && (
-                    <div className="text-[9px] text-neutral-400 font-mono mt-0.5">
-                      {s.sub}
-                    </div>
-                  )}
-                </div>
-              ))}
+                )}
+              </button>
             </div>
           </div>
+        </div>
 
-          {/* ── RIGHT: Buy Form ── */}
-          <div className="w-full">
-            <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] p-6 space-y-6">
-              <div>
-                <h2 className="text-xl font-bold text-white mb-1">
-                  Buy Profit Shares
-                </h2>
-                <p className="text-xs text-neutral-500">
-                  Direct UPI payment. No intermediaries. Verified via bank
-                  credit-alert.
-                </p>
-              </div>
-
-              {/* Quantity Selector */}
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-neutral-300 block">
-                  Number of Shares
-                </label>
-                <div className="flex items-center gap-3">
+        {/* ── TAB 1: Market Pool & Purchase ── */}
+        {activeTab === "market" && (
+          <div>
+            {/* Quick portfolio banner for logged-in shareholders */}
+            {currentUser &&
+              mySharesSummary &&
+              mySharesSummary.totalShares > 0 && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-indigo-500/[0.08] border border-indigo-500/25 mb-8 backdrop-blur-md animate-in fade-in">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 shrink-0">
+                      <Award className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white">
+                        You hold {mySharesSummary.totalShares} Shares (
+                        {mySharesSummary.stakePercent}% Profit Stake)
+                      </div>
+                      <div className="text-[11px] text-neutral-400 font-mono">
+                        Current portfolio value:{" "}
+                        <span className="text-emerald-400 font-semibold">
+                          ₹{mySharesSummary.currentValue.toLocaleString()}
+                        </span>{" "}
+                        • Active market price: ₹{currentPrice}/share
+                      </div>
+                    </div>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setQuantity((q) => Math.max(1, q - 10))}
-                    className="w-10 h-10 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-lg font-bold hover:bg-white/[0.1] transition-colors"
+                    onClick={() => handleTabChange("my-shares")}
+                    className="px-4 py-2 rounded-xl bg-indigo-600/90 hover:bg-indigo-600 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0"
                   >
-                    −
-                  </button>
-                  <input
-                    type="number"
-                    min="1"
-                    max={stats.availableShares}
-                    value={quantity}
-                    onChange={(e) =>
-                      setQuantity(
-                        Math.min(
-                          stats.availableShares,
-                          Math.max(1, parseInt(e.target.value, 10) || 1),
-                        ),
-                      )
-                    }
-                    className="flex-1 text-center py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-mono font-bold outline-none focus:border-indigo-500 transition-colors"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setQuantity((q) =>
-                        Math.min(stats.availableShares, q + 10),
-                      )
-                    }
-                    className="w-10 h-10 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-lg font-bold hover:bg-white/[0.1] transition-colors"
-                  >
-                    +
+                    <span>View My Holdings</span>
+                    <ArrowUpRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
-                {/* Quick picks */}
-                <div className="flex gap-2 flex-wrap">
-                  {[10, 50, 100, 200].map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => setQuantity(n)}
-                      disabled={n > stats.availableShares}
-                      className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold border transition-colors disabled:opacity-30 ${
-                        quantity === n
-                          ? "bg-indigo-500 border-indigo-400 text-white"
-                          : "bg-white/[0.04] border-white/[0.08] text-neutral-400 hover:border-indigo-500/50 hover:text-white"
-                      }`}
+              )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
+              {/* ── LEFT: Donut Chart + Stats ── */}
+              <div className="flex flex-col items-center gap-8">
+                {statsLoading ? (
+                  <div className="w-56 h-56 sm:w-64 sm:h-64 rounded-full border-[16px] border-neutral-800 animate-pulse" />
+                ) : (
+                  <DonutChart
+                    soldPercent={stats.soldPercent}
+                    reservedPercent={stats.reservedPercent}
+                    availablePercent={stats.availablePercent}
+                    soldShares={stats.soldShares}
+                    availableShares={stats.availableShares}
+                    totalShares={stats.totalShares}
+                    animating={chartAnimating}
+                  />
+                )}
+
+                {/* Legend */}
+                <div className="flex flex-col gap-3 w-full max-w-xs">
+                  {[
+                    {
+                      color: "#64748b",
+                      label: "Reserved (Founders & Core)",
+                      value: `${stats.reservedPercent}%`,
+                      sub: `${stats.reservedShares.toLocaleString()} shares (600 max)`,
+                      glow: "rgba(100, 116, 139, 0.45)",
+                    },
+                    {
+                      color: "#10b981",
+                      label: "Publicly Claimed / Sold",
+                      value: `${stats.soldPercent.toFixed(1)}%`,
+                      sub: `${stats.soldShares.toLocaleString()} shares claimed`,
+                      glow: "rgba(16, 185, 129, 0.5)",
+                    },
+                    {
+                      color: "#6366f1",
+                      label: "Available Public Shares",
+                      value: `${stats.availablePercent.toFixed(1)}%`,
+                      sub: `${stats.availableShares.toLocaleString()} shares open`,
+                      glow: "rgba(99, 102, 241, 0.55)",
+                      border: "#818cf8",
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.03] border border-white/[0.07] hover:bg-white/[0.05] transition-colors"
                     >
-                      {n}
-                    </button>
+                      <div
+                        className="w-3.5 h-3.5 rounded-full shrink-0"
+                        style={{
+                          background: item.color,
+                          boxShadow: `0 0 10px ${item.glow}`,
+                          border: item.border
+                            ? `1.5px solid ${item.border}`
+                            : "none",
+                        }}
+                      />
+                      <div className="flex-1">
+                        <div className="text-xs font-semibold text-neutral-200">
+                          {item.label}
+                        </div>
+                        <div className="text-[10px] font-mono text-neutral-400">
+                          {item.sub}
+                        </div>
+                      </div>
+                      <span className="text-sm font-black text-white font-mono">
+                        {item.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Quick Stats */}
+                <div className="grid grid-cols-2 gap-3 w-full max-w-xs">
+                  {[
+                    {
+                      icon: BarChart2,
+                      label: "Market Price / Share",
+                      value: `₹${currentPrice}`,
+                      sub: "Active market value",
+                    },
+                    {
+                      icon: Users,
+                      label: "10 Shares =",
+                      value: "1% equity",
+                      sub: "Direct profit share",
+                    },
+                    {
+                      icon: CheckCircle2,
+                      label: "Shares Bought",
+                      value: `${stats.soldShares + (stats.reservedSoldShares || 0)} shares`,
+                      sub: "Market + founder pool",
+                    },
+                    {
+                      icon: TrendingUp,
+                      label:
+                        stats.dividendYieldPercent > 0
+                          ? "Dividend Yield"
+                          : "Still Available",
+                      value:
+                        stats.dividendYieldPercent > 0
+                          ? `${stats.dividendYieldPercent}%`
+                          : `${stats.availableShares} shares`,
+                      sub:
+                        stats.dividendYieldPercent > 0
+                          ? `DPS: ₹${stats.dividendPerShare}/sh`
+                          : "40% public pool",
+                    },
+                  ].map((s) => (
+                    <div
+                      key={s.label}
+                      className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06] text-center"
+                    >
+                      <s.icon className="w-4 h-4 text-indigo-400 mx-auto mb-1" />
+                      <div className="text-[10px] text-neutral-500 font-mono">
+                        {s.label}
+                      </div>
+                      <div className="text-sm font-black text-white">
+                        {s.value}
+                      </div>
+                      {s.sub && (
+                        <div className="text-[9px] text-neutral-400 font-mono mt-0.5">
+                          {s.sub}
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
 
-              {/* Summary box */}
-              <div className="p-4 rounded-xl bg-indigo-500/[0.06] border border-indigo-500/20 space-y-2">
-                <div className="flex justify-between text-xs text-neutral-400">
-                  <span>Shares</span>
-                  <span className="text-white font-mono font-bold">
-                    {quantity}
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs text-neutral-400">
-                  <span>Profit Share</span>
-                  <span className="text-indigo-300 font-mono font-bold">
-                    {sharesPercent}%
-                  </span>
-                </div>
-                <div className="flex justify-between text-base font-bold text-white pt-1 border-t border-indigo-500/20">
-                  <span>Total</span>
-                  <span className="font-mono text-xl">
-                    ₹{totalCost.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-
-              {/* Name field (optional) */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-neutral-400 block">
-                    Name on Profit Share (optional)
-                  </label>
-                  {currentUser && (
-                    <span className="text-[10px] text-neutral-500 font-mono">
-                      Defaults to @{currentUser.username}
-                    </span>
-                  )}
-                </div>
-                <input
-                  type="text"
-                  placeholder={
-                    currentUser
-                      ? `Default: ${currentUser.username}`
-                      : "Log in to set name"
-                  }
-                  value={guestName}
-                  onChange={(e) => setGuestName(e.target.value)}
-                  disabled={!currentUser}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-sm text-white placeholder-neutral-600 outline-none focus:border-indigo-500 transition-colors font-mono disabled:opacity-50"
-                />
-                {currentUser && !guestName.trim() && (
-                  <p className="text-[11px] text-neutral-500">
-                    Will be registered under your username:{" "}
-                    <span className="text-indigo-400 font-mono font-medium">
-                      {currentUser.username}
-                    </span>
-                  </p>
-                )}
-              </div>
-
-              {purchaseError && (
-                <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>{purchaseError}</span>
-                </div>
-              )}
-
-              {/* Availability warning */}
-              {stats.availableShares === 0 && (
-                <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 text-center font-semibold">
-                  🎉 All public shares have been sold!
-                </div>
-              )}
-
-              {authLoading ? (
-                <div className="w-full py-3.5 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center gap-2 text-xs text-neutral-500">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Checking account...</span>
-                </div>
-              ) : !currentUser ? (
-                <div className="space-y-3">
-                  <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center gap-2.5 text-xs text-indigo-300">
-                    <UserIcon className="w-4 h-4 shrink-0" />
-                    <span>
-                      You must be logged in to purchase profit shares.
-                    </span>
+              {/* ── RIGHT: Buy Form ── */}
+              <div className="w-full">
+                <div className="rounded-2xl bg-white/[0.03] border border-white/[0.06] p-6 space-y-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-white mb-1">
+                      Buy Profit Shares
+                    </h2>
+                    <p className="text-xs text-neutral-500">
+                      Direct UPI payment. No intermediaries. Verified via bank
+                      credit-alert.
+                    </p>
                   </div>
-                  <Link
-                    href="/auth"
-                    className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-lg shadow-indigo-900/40 text-center"
-                  >
-                    Log In to Purchase
-                  </Link>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center pt-2 w-full">
-                  <div className="p-1 rounded-[32px] bg-white/[0.04] border border-white/[0.12] shadow-2xl shadow-black/80 w-full max-w-[340px] flex items-center justify-center">
-                    <SlideCommit
-                      label={`Slide to pay ₹${totalCost.toLocaleString()}`}
-                      doneLabel="Order Created"
-                      errorLabel="Payment failed"
-                      onConfirm={handlePurchase}
-                      onDone={() => console.log("shares order created")}
-                      onError={(reason: any) =>
-                        console.log("shares order error", reason)
+
+                  {/* Quantity Selector */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-neutral-300 block">
+                      Number of Shares
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setQuantity((q) => Math.max(1, q - 10))}
+                        className="w-10 h-10 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-lg font-bold hover:bg-white/[0.1] transition-colors cursor-pointer"
+                      >
+                        −
+                      </button>
+                      <input
+                        type="number"
+                        min="1"
+                        max={stats.availableShares}
+                        value={quantity}
+                        onChange={(e) =>
+                          setQuantity(
+                            Math.min(
+                              stats.availableShares,
+                              Math.max(1, parseInt(e.target.value, 10) || 1),
+                            ),
+                          )
+                        }
+                        className="flex-1 text-center py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-white text-sm font-mono font-bold outline-none focus:border-indigo-500 transition-colors"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setQuantity((q) =>
+                            Math.min(stats.availableShares, q + 10),
+                          )
+                        }
+                        className="w-10 h-10 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-lg font-bold hover:bg-white/[0.1] transition-colors cursor-pointer"
+                      >
+                        +
+                      </button>
+                    </div>
+                    {/* Quick picks */}
+                    <div className="flex gap-2 flex-wrap">
+                      {[10, 50, 100, 200].map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => setQuantity(n)}
+                          disabled={n > stats.availableShares}
+                          className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold border transition-colors disabled:opacity-30 cursor-pointer ${
+                            quantity === n
+                              ? "bg-indigo-500 border-indigo-400 text-white"
+                              : "bg-white/[0.04] border-white/[0.08] text-neutral-400 hover:border-indigo-500/50 hover:text-white"
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Summary box */}
+                  <div className="p-4 rounded-xl bg-indigo-500/[0.06] border border-indigo-500/20 space-y-2">
+                    <div className="flex justify-between text-xs text-neutral-400">
+                      <span>Shares</span>
+                      <span className="text-white font-mono font-bold">
+                        {quantity}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-xs text-neutral-400">
+                      <span>Profit Share</span>
+                      <span className="text-indigo-300 font-mono font-bold">
+                        {sharesPercent}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-base font-bold text-white pt-1 border-t border-indigo-500/20">
+                      <span>Total</span>
+                      <span className="font-mono text-xl">
+                        ₹{totalCost.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Name field (optional) */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-neutral-400 block">
+                        Name on Profit Share (optional)
+                      </label>
+                      {currentUser && (
+                        <span className="text-[10px] text-neutral-500 font-mono">
+                          Defaults to @{currentUser.username}
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      placeholder={
+                        currentUser
+                          ? `Default: ${currentUser.username}`
+                          : "Log in to set name"
                       }
-                      trackColor="#151722"
-                      handleColor="#6366f1"
-                      successColor="#22c55e"
-                      dangerColor="#e5484d"
-                      width={332}
-                      height={58}
-                      radius={29}
-                      speed={50}
-                      returnBounce={0.38}
-                      landingDip={0.026}
-                      holdMs={1200}
-                      disabled={
-                        purchasing ||
-                        stats.availableShares === 0 ||
-                        quantity < 1
-                      }
+                      value={guestName}
+                      onChange={(e) => setGuestName(e.target.value)}
+                      disabled={!currentUser}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-sm text-white placeholder-neutral-600 outline-none focus:border-indigo-500 transition-colors font-mono disabled:opacity-50"
                     />
+                    {currentUser && !guestName.trim() && (
+                      <p className="text-[11px] text-neutral-500">
+                        Will be registered under your username:{" "}
+                        <span className="text-indigo-400 font-mono font-medium">
+                          {currentUser.username}
+                        </span>
+                      </p>
+                    )}
                   </div>
-                  <p className="text-[11px] text-neutral-400 mt-2.5 font-mono text-center flex items-center justify-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-                    <span>
-                      Slide handle across to pay ₹{totalCost.toLocaleString()}{" "}
-                      via UPI
-                    </span>
-                  </p>
-                </div>
-              )}
 
-              <div className="flex items-center gap-2 text-[11px] text-neutral-600">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400/70 shrink-0" />
-                <span>
-                  Direct bank settlement. Verified via HMAC-SHA256 IMAP
-                  credit-alert scan.
-                </span>
+                  {purchaseError && (
+                    <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{purchaseError}</span>
+                    </div>
+                  )}
+
+                  {/* Availability warning */}
+                  {stats.availableShares === 0 && (
+                    <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 text-center font-semibold">
+                      🎉 All public shares have been sold!
+                    </div>
+                  )}
+
+                  {authLoading ? (
+                    <div className="w-full py-3.5 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center gap-2 text-xs text-neutral-500">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Checking account...</span>
+                    </div>
+                  ) : !currentUser ? (
+                    <div className="space-y-3">
+                      <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center gap-2.5 text-xs text-indigo-300">
+                        <UserIcon className="w-4 h-4 shrink-0" />
+                        <span>
+                          You must be logged in to purchase profit shares.
+                        </span>
+                      </div>
+                      <Link
+                        href="/auth"
+                        className="w-full py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-lg shadow-indigo-900/40 text-center"
+                      >
+                        Log In to Purchase
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center pt-2 w-full">
+                      <div className="p-1 rounded-[32px] bg-white/[0.04] border border-white/[0.12] shadow-2xl shadow-black/80 w-full max-w-[340px] flex items-center justify-center">
+                        <SlideCommit
+                          label={`Slide to pay ₹${totalCost.toLocaleString()}`}
+                          doneLabel="Order Created"
+                          errorLabel="Payment failed"
+                          onConfirm={handlePurchase}
+                          onDone={() => console.log("shares order created")}
+                          onError={(reason: any) =>
+                            console.log("shares order error", reason)
+                          }
+                          trackColor="#151722"
+                          handleColor="#6366f1"
+                          successColor="#22c55e"
+                          dangerColor="#e5484d"
+                          width={332}
+                          height={58}
+                          radius={29}
+                          speed={50}
+                          returnBounce={0.38}
+                          landingDip={0.026}
+                          holdMs={1200}
+                          disabled={
+                            purchasing ||
+                            stats.availableShares === 0 ||
+                            quantity < 1
+                          }
+                        />
+                      </div>
+                      <p className="text-[11px] text-neutral-400 mt-2.5 font-mono text-center flex items-center justify-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+                        <span>
+                          Slide handle across to pay ₹
+                          {totalCost.toLocaleString()} via UPI
+                        </span>
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 text-[11px] text-neutral-600">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400/70 shrink-0" />
+                    <span>
+                      Direct bank settlement. Verified via HMAC-SHA256 IMAP
+                      credit-alert scan.
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* ── TAB 2: My Shareholdings ── */}
+        {activeTab === "my-shares" && (
+          <div className="space-y-8 animate-in fade-in">
+            {/* If not logged in */}
+            {!currentUser && !authLoading ? (
+              <div className="max-w-md mx-auto text-center p-8 sm:p-10 rounded-3xl bg-white/[0.03] border border-white/[0.08] backdrop-blur-md shadow-2xl space-y-5">
+                <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/25 flex items-center justify-center text-indigo-400 mx-auto shadow-inner">
+                  <UserIcon className="w-8 h-8" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white mb-2">
+                    Log In to Access Your Shares
+                  </h2>
+                  <p className="text-xs text-neutral-400 leading-relaxed">
+                    Track your CrankShaft equity stake, view profit dividends,
+                    and download official share certificates.
+                  </p>
+                </div>
+                <Link
+                  href="/auth"
+                  className="inline-flex items-center justify-center w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-colors shadow-lg shadow-indigo-900/40 cursor-pointer"
+                >
+                  Log In to View Holdings
+                </Link>
+              </div>
+            ) : authLoading || mySharesLoading ? (
+              /* Loading Skeleton */
+              <div className="space-y-6 animate-pulse">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {[1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className="h-28 rounded-2xl bg-white/[0.03] border border-white/[0.06]"
+                    />
+                  ))}
+                </div>
+                <div className="h-64 rounded-2xl bg-white/[0.03] border border-white/[0.06]" />
+              </div>
+            ) : (
+              /* Shareholder Portfolio Dashboard */
+              <div className="space-y-8">
+                {/* Header Bar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-white/[0.02] border border-white/[0.06] backdrop-blur-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 shrink-0">
+                      <Award className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-base font-bold text-white">
+                          Stakeholder Portfolio
+                        </h2>
+                        <span className="px-2 py-0.5 rounded-md bg-indigo-500/10 border border-indigo-500/25 text-[10px] font-mono text-indigo-300 font-semibold">
+                          @{currentUser?.username}
+                        </span>
+                      </div>
+                      <p className="text-xs text-neutral-400 mt-0.5">
+                        Authoritative ledger of your CrankShaft equity and share
+                        ownership.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => fetchMyShares(true)}
+                      disabled={mySharesRefreshing}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-neutral-300 text-xs font-mono transition-colors disabled:opacity-50 cursor-pointer"
+                    >
+                      <RefreshCw
+                        className={`w-3.5 h-3.5 ${mySharesRefreshing ? "animate-spin text-indigo-400" : ""}`}
+                      />
+                      <span>Refresh</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTabChange("market")}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-colors cursor-pointer shadow-sm shadow-indigo-900/30"
+                    >
+                      <span>Buy Shares</span>
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3 Metric Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Card 1: Total Shares */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-b from-white/[0.04] to-white/[0.01] border border-white/[0.08] relative overflow-hidden group hover:border-indigo-500/40 transition-colors">
+                    <div className="flex items-center justify-between text-neutral-400 mb-2">
+                      <span className="text-[10px] font-mono uppercase tracking-wider font-semibold">
+                        Total Shares Owned
+                      </span>
+                      <Award className="w-4 h-4 text-indigo-400" />
+                    </div>
+                    <div className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">
+                      {(mySharesSummary?.totalShares ?? 0).toLocaleString()}
+                    </div>
+                    <div className="text-[11px] font-mono text-neutral-400 mt-1 flex items-center gap-1.5">
+                      <span className="text-indigo-300 font-semibold">
+                        {mySharesSummary?.marketShares ?? 0} Market
+                      </span>
+                      <span>•</span>
+                      <span>
+                        {mySharesSummary?.reservedShares ?? 0} Founder/Core
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Card 2: Equity Stake % */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-b from-white/[0.04] to-white/[0.01] border border-white/[0.08] relative overflow-hidden group hover:border-indigo-500/40 transition-colors">
+                    <div className="flex items-center justify-between text-neutral-400 mb-2">
+                      <span className="text-[10px] font-mono uppercase tracking-wider font-semibold">
+                        Profit Stake %
+                      </span>
+                      <PieChart className="w-4 h-4 text-emerald-400" />
+                    </div>
+                    <div className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">
+                      {mySharesSummary?.stakePercent ?? 0}%
+                    </div>
+                    <div className="text-[11px] font-mono text-neutral-400 mt-1">
+                      10 shares = 1.0% company profit
+                    </div>
+                  </div>
+
+                  {/* Card 3: Portfolio Value */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-b from-white/[0.04] to-white/[0.01] border border-white/[0.08] relative overflow-hidden group hover:border-indigo-500/40 transition-colors">
+                    <div className="flex items-center justify-between text-neutral-400 mb-2">
+                      <span className="text-[10px] font-mono uppercase tracking-wider font-semibold">
+                        Current Valuation
+                      </span>
+                      <Wallet className="w-4 h-4 text-indigo-400" />
+                    </div>
+                    <div className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono tracking-tight">
+                      ₹{(mySharesSummary?.currentValue ?? 0).toLocaleString()}
+                    </div>
+                    <div className="text-[11px] font-mono text-neutral-400 mt-1">
+                      Invested: ₹
+                      {(mySharesSummary?.totalInvested ?? 0).toLocaleString()}{" "}
+                      (@₹{currentPrice}/sh)
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pending orders alert (if user has orders awaiting verification) */}
+                {myShares.some((s) => s.status === "PENDING") && (
+                  <div className="p-4 rounded-2xl bg-amber-500/[0.08] border border-amber-500/25 space-y-3">
+                    <div className="flex items-center gap-2.5 text-amber-300 text-xs font-semibold">
+                      <Clock className="w-4 h-4 shrink-0" />
+                      <span>
+                        You have pending share orders awaiting bank alert
+                        verification
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {myShares
+                        .filter((s) => s.status === "PENDING")
+                        .map((pendingOrder) => (
+                          <div
+                            key={pendingOrder.id}
+                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-neutral-900/60 border border-neutral-800 text-xs"
+                          >
+                            <div className="font-mono">
+                              <span className="text-white font-bold">
+                                {pendingOrder.numberOfShares} Shares
+                              </span>{" "}
+                              • Order:{" "}
+                              <span className="text-neutral-400">
+                                {pendingOrder.orderId}
+                              </span>{" "}
+                              • ₹{pendingOrder.totalPrice.toLocaleString()}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleResumePendingOrder(pendingOrder)
+                              }
+                              className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold text-[11px] transition-colors cursor-pointer self-start sm:self-auto"
+                            >
+                              Complete / Verify Payment
+                            </button>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Shareholdings Ledger & Certificates ── */}
+                <div className="rounded-2xl bg-white/[0.02] border border-white/[0.06] overflow-hidden">
+                  <div className="p-5 border-b border-white/[0.06] flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-white">
+                        Ownership Certificates & Transaction History
+                      </h3>
+                      <p className="text-[11px] text-neutral-400 mt-0.5">
+                        Each lot represents an authenticated shareholder entry
+                        on the CrankShaft cap table.
+                      </p>
+                    </div>
+                    <span className="text-xs font-mono text-neutral-400 font-semibold">
+                      {myShares.length}{" "}
+                      {myShares.length === 1 ? "Record" : "Records"}
+                    </span>
+                  </div>
+
+                  {myShares.length === 0 ? (
+                    /* Empty state */
+                    <div className="p-10 text-center space-y-4">
+                      <div className="w-14 h-14 rounded-2xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-neutral-400 mx-auto">
+                        <Award className="w-7 h-7" />
+                      </div>
+                      <div>
+                        <h4 className="text-base font-bold text-white">
+                          No Shares in Your Portfolio Yet
+                        </h4>
+                        <p className="text-xs text-neutral-400 max-w-sm mx-auto mt-1">
+                          You haven't purchased any CrankShaft shares yet.
+                          Purchase shares from the public pool to participate in
+                          revenue dividends.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleTabChange("market")}
+                        className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-colors cursor-pointer inline-flex items-center gap-1.5 shadow-lg shadow-indigo-900/40"
+                      >
+                        <span>Buy CrankShaft Shares</span>
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    /* Share items table/cards */
+                    <div className="divide-y divide-white/[0.04]">
+                      {myShares.map((item) => (
+                        <div
+                          key={item.id}
+                          className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-white/[0.02] transition-colors"
+                        >
+                          <div className="flex items-start sm:items-center gap-3.5">
+                            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0 mt-0.5 sm:mt-0 font-bold font-mono text-sm">
+                              {item.numberOfShares}
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-bold text-white font-mono">
+                                  {item.numberOfShares} Shares
+                                </span>
+                                <span className="text-xs font-mono text-indigo-300 font-semibold">
+                                  ({item.stakePercent}% Profit Stake)
+                                </span>
+                                <span
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold ${
+                                    item.status === "PAID"
+                                      ? "bg-emerald-500/10 border border-emerald-500/25 text-emerald-400"
+                                      : item.status === "PENDING"
+                                        ? "bg-amber-500/10 border border-amber-500/25 text-amber-400"
+                                        : "bg-red-500/10 border border-red-500/25 text-red-400"
+                                  }`}
+                                >
+                                  {item.status}
+                                </span>
+                                <span
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-mono ${
+                                    item.pool === "reserved"
+                                      ? "bg-purple-500/10 text-purple-300 border border-purple-500/20"
+                                      : "bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
+                                  }`}
+                                >
+                                  {item.pool === "reserved"
+                                    ? "Founder Pool"
+                                    : "Market Pool"}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 text-[11px] text-neutral-400 font-mono flex-wrap">
+                                <span className="text-neutral-500">Order:</span>
+                                <span className="text-neutral-300">
+                                  {item.orderId}
+                                </span>
+                                {item.utr && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-neutral-500">
+                                      UTR:
+                                    </span>
+                                    <span className="text-emerald-400 font-medium">
+                                      {item.utr}
+                                    </span>
+                                  </>
+                                )}
+                                <span>•</span>
+                                <span className="text-neutral-500">
+                                  {new Date(
+                                    item.paidAt || item.createdAt,
+                                  ).toLocaleDateString("en-IN", {
+                                    year: "numeric",
+                                    month: "short",
+                                    day: "numeric",
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Right: Valuation & Ticket CTA */}
+                          <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-3 md:pt-0 border-white/[0.04]">
+                            <div className="text-left md:text-right">
+                              <div className="text-sm font-black text-white font-mono">
+                                ₹{item.currentMarketValue.toLocaleString()}
+                              </div>
+                              <div className="text-[10px] text-neutral-400 font-mono">
+                                Cost: ₹{item.totalPrice.toLocaleString()} (₹
+                                {item.pricePerShare}/sh)
+                              </div>
+                            </div>
+
+                            {item.status === "PAID" ? (
+                              <button
+                                type="button"
+                                onClick={() => handleViewTicket(item)}
+                                className="px-3.5 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-xs font-semibold text-white transition-colors cursor-pointer flex items-center gap-1.5 shrink-0"
+                              >
+                                <Receipt className="w-3.5 h-3.5 text-indigo-400" />
+                                <span>View Ticket</span>
+                              </button>
+                            ) : item.status === "PENDING" ? (
+                              <button
+                                type="button"
+                                onClick={() => handleResumePendingOrder(item)}
+                                className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold transition-colors cursor-pointer shrink-0"
+                              >
+                                Pay / Verify
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Bottom CTA to buy more */}
+                {myShares.length > 0 && (
+                  <div className="p-6 rounded-2xl bg-indigo-500/[0.04] border border-indigo-500/15 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <h4 className="text-sm font-bold text-white">
+                        Expand Your Ownership Stake
+                      </h4>
+                      <p className="text-xs text-neutral-400 mt-0.5">
+                        {stats.availableShares > 0
+                          ? `${stats.availableShares} shares still available in the 40% public pool.`
+                          : "Public pool sold out."}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleTabChange("market")}
+                      className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-colors cursor-pointer inline-flex items-center gap-1.5 self-start sm:self-auto shrink-0 shadow-md shadow-indigo-900/30"
+                    >
+                      <span>Buy More Shares</span>
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── PAYMENT MODAL ──────────────────────────────────────────────────── */}
@@ -1184,16 +1773,20 @@ export default function SharesPage() {
         </div>
       )}
 
-      {/* ── TEAR TICKET (after payment) ──────────────────────────────────── */}
+      {/* ── TEAR TICKET (after payment or viewing certificate) ──────────────────────────────────── */}
       {ticketData && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in">
           <div className="flex flex-col items-center gap-6">
             <div className="text-center space-y-1">
               <h2 className="text-2xl font-black text-white">
-                🎉 Profit Share Secured!
+                {ticketData.isViewingExisting
+                  ? "📜 Profit Share Certificate"
+                  : "🎉 Profit Share Secured!"}
               </h2>
               <p className="text-sm text-neutral-400">
-                Tear your ticket to mark it as received.
+                {ticketData.isViewingExisting
+                  ? "Official CrankShaft stakeholder ownership record."
+                  : "Tear your ticket to mark it as received."}
               </p>
             </div>
 
@@ -1276,9 +1869,9 @@ export default function SharesPage() {
             <button
               type="button"
               onClick={() => setTicketData(null)}
-              className="px-6 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-sm font-semibold transition-colors border border-white/10"
+              className="px-6 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-sm font-semibold transition-colors border border-white/10 cursor-pointer"
             >
-              Done
+              {ticketData.isViewingExisting ? "Close Certificate" : "Done"}
             </button>
           </div>
         </div>

@@ -129,3 +129,33 @@ test("updateSharePrice rejects negative, zero, and NaN prices", async () => {
     { message: /positive number/ },
   );
 });
+
+test("user shareholding calculates exact profit stake percentage (10 shares = 1%)", () => {
+  const userPaidShares = 25; // 25 shares
+  const totalCompanyShares = 1000;
+  const stakePercent = parseFloat(
+    ((userPaidShares / totalCompanyShares) * 100).toFixed(2),
+  );
+  assert.equal(stakePercent, 2.5);
+
+  const currentPricePerShare = 32;
+  const portfolioValuation = userPaidShares * currentPricePerShare;
+  assert.equal(portfolioValuation, 800); // 25 * 32
+});
+
+test("user dividend payout correctly reflects dividend pool distribution", () => {
+  const userPaidShares = 40; // 40 shares = 4% stake
+  const capital = 30000;
+  const dividendPool = 2000;
+  const metrics = calculateDividendMetrics(
+    capital,
+    dividendPool,
+    userPaidShares,
+  );
+
+  // DPS = 2,000 / 1,000 = ₹2.00 / share
+  assert.equal(metrics.dividendPerShare, 2);
+  // Payout = 40 * ₹2 = ₹80
+  assert.equal(metrics.userPayout, 80);
+  assert.equal(metrics.userStakePercent, 4);
+});

@@ -20,6 +20,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
+    const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB limit
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        {
+          error:
+            "Image exceeds 15MB size limit. Please upload a smaller image.",
+        },
+        { status: 413 },
+      );
+    }
+
     const bucket = await getGridFSBucket();
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
