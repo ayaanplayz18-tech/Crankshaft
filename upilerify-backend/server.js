@@ -128,16 +128,24 @@ app.get("/api/orders/:orderId/status", async (req, res) => {
 // ─── 4. PROTECTED DELAYED-CRON GMAIL SCANNER (CRON-JOB.ORG ENDPOINT) ───────
 app.get("/api/check-emails", async (req, res) => {
   try {
-    // Validate Authorization header with Bearer token
+    // Validate Authorization header or query parameter (?secret= or ?token=)
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    const querySecret = req.query.secret || req.query.token;
+
+    let providedToken = null;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      providedToken = authHeader.split(" ")[1];
+    } else if (querySecret) {
+      providedToken = String(querySecret).trim();
+    }
+
+    if (!providedToken) {
       return res.status(401).json({
         ok: false,
-        error: "Missing or malformed Authorization header. Expected: Bearer <CRON_SECRET>",
+        error: "Missing authorization token. Use Bearer header or ?secret=<CRON_SECRET>",
       });
     }
 
-    const providedToken = authHeader.split(" ")[1];
     if (CRON_SECRET && providedToken !== CRON_SECRET) {
       return res.status(401).json({
         ok: false,
@@ -152,23 +160,25 @@ app.get("/api/check-emails", async (req, res) => {
 
     console.log(`[CRON FINISHED] Scanned: ${result.scannedEmails}, Matched: ${result.matchedOrders}`);
 
-    return res.json({
-      ok: result.ok,
-      checkedAt: result.checkedAt,
-      matchedOrders: result.matchedOrders,
-      scannedEmails: result.scannedEmails,
-      errors: result.errors,
-      note: result.note,
+    // Keep payload ultra-compact (<100 bytes) to stay well under cron-job.org 4KB limit
+    return res.status(200).json({
+      ok: Boolean(result.ok),
+      matched: result.matchedOrders || 0,
+      scanned: result.scannedEmails || 0,
     });
   } catch (err) {
     console.error("[CHECK EMAILS ERROR]", err);
-    return res.status(500).json({
+    // Return HTTP 200 with ok: false so cron-job.org doesn't treat transient IMAP blips as fatal job failures
+    return res.status(200).json({
       ok: false,
-      checkedAt: new Date().toISOString(),
-      matchedOrders: 0,
-      errors: [err.message],
+      error: String(err?.message || "Scan error").slice(0, 100),
     });
   }
+});
+
+// Lightweight keep-alive ping endpoint (returns 2 bytes)
+app.get("/ping", (req, res) => {
+  res.status(200).send("OK");
 });
 
 // ─── 5. MANUAL UTR VERIFICATION FALLBACK ───────────────────────────────────
